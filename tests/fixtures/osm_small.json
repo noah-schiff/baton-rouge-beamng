@@ -1,0 +1,33 @@
+{
+  "version": 0.6,
+  "generator": "hand-written test fixture",
+  "elements": [
+    {"type": "way", "id": 1, "nodes": [11, 12, 13],
+     "tags": {"highway": "residential", "name": "Test Avenue"},
+     "geometry": [{"lat": 30.4300, "lon": -91.1600}, {"lat": 30.4300, "lon": -91.1580}, {"lat": 30.4310, "lon": -91.1560}]},
+    {"type": "way", "id": 2, "nodes": [21, 22],
+     "tags": {"highway": "footway"},
+     "geometry": [{"lat": 30.4320, "lon": -91.1600}, {"lat": 30.4330, "lon": -91.1600}]},
+    {"type": "way", "id": 3, "nodes": [31, 32],
+     "tags": {"highway": "motorway", "oneway": "yes", "lanes": "3", "ref": "I 10"},
+     "geometry": [{"lat": 30.4200, "lon": -91.1700}, {"lat": 30.4200, "lon": -91.1600}]},
+    {"type": "way", "id": 4, "nodes": [41, 42],
+     "tags": {"highway": "primary", "bridge": "yes", "layer": "1", "name": "Test Bridge"},
+     "geometry": [{"lat": 30.4250, "lon": -91.1650}, {"lat": 30.4250, "lon": -91.1630}]},
+    {"type": "way", "id": 5, "nodes": [51],
+     "tags": {"highway": "residential"},
+     "geometry": [{"lat": 30.4400, "lon": -91.1500}]},
+    {"type": "way", "id": 6, "nodes": [61, 62],
+     "tags": {"highway": "service"},
+     "geometry": [{"lat": 30.4410, "lon": -91.1510}, {"lat": 30.4410, "lon": -91.1510}]},
+    {"type": "way", "id": 7, "nodes": [71, 72],
+     "tags": {"highway": "construction"},
+     "geometry": [{"lat": 30.4350, "lon": -91.1650}, {"lat": 30.4360, "lon": -91.1650}]},
+    {"type": "way", "id": 8, "nodes": [81, 82],
+     "tags": {"highway": "secondary", "oneway": "-1", "name": "Backwards Street"},
+     "geometry": [{"lat": 30.4400, "lon": -91.1500}, {"lat": 30.4400, "lon": -91.1480}]},
+    {"type": "way", "id": 9, "nodes": [91, 92, 93, 91],
+     "tags": {"natural": "water", "name": "Test Lake"},
+     "geometry": [{"lat": 30.41, "lon": -91.18}, {"lat": 30.41, "lon": -91.178}, {"lat": 30.412, "lon": -91.178}, {"lat": 30.41, "lon": -91.18}]}
+  ]
+}

@@ -1,0 +1,56 @@
+# Baton Rouge 1:1 BeamNG.drive map: pipeline settings.
+# Level coordinates are meters in NAD83 / UTM 15N (EPSG:26915), relative to the center.
+
+extent:
+  center_lat: 30.430
+  center_lon: -91.160
+  half_size_m: 8192        # box is 2 x half_size on a side (16,384 m)
+  buffer_m: 500            # extra margin fetched around the box
+  debug_half_size_m: null  # e.g. 1500 builds a small 3 km test map
+
+terrain:
+  size: 4096               # grid cells per side (4 m/px). 8192 gives 2 m/px.
+  z_min: -15.0             # meters (NAVD88) mapped to height value 0 (river bed is carved to about -11)
+  z_max: 40.0              # meters mapped to height value 65535
+
+bridges:
+  clearance_m: 5.5         # minimum deck height above the ground below
+  overrides:               # OSM bridge name -> deck peak above the straight line, m
+    Horace Wilkinson Bridge: 52.0
+
+level:
+  name: baton_rouge        # folder under levels/ in the mod zip
+  title: Baton Rouge 1:1
+  authors: Noah Schiff
+
+spawns:                    # the first one is the default spawn point
+  - {name: spawn_lsu, title: "LSU, Tiger Stadium lot", lat: 30.4115, lon: -91.1855}
+  - {name: spawn_capitol, title: Louisiana State Capitol, lat: 30.4560, lon: -91.1868}
+  - {name: spawn_i10_bridge, title: "I-10 Mississippi River bridge, east approach", lat: 30.4395, lon: -91.1935}
+
+osm:
+  source: geofabrik       # Geofabrik extract (no rate limits); "overpass" uses the public API first
+
+buildings:
+  microsoft: true          # add Microsoft ML footprints where OpenStreetMap has none
+  tile_m: 256              # side of a building mesh tile (a tile over the vertex cap is split in four)
+
+trees:
+  max_count: 250000        # cap on tree instances; over it, the tallest in each 50 m cell stay first
+
+markings:
+  enabled: true            # lane lines, stop bars and crosswalks on motorway to tertiary roads
+
+traffic:
+  enabled: true            # info.json supportsTraffic: AI traffic can be switched on in Freeroam
+
+sources:
+  osm_extract: https://download.geofabrik.de/north-america/us/louisiana-latest.osm.pbf
+  tnm_api: https://tnmaccess.nationalmap.gov/api/v1/products
+  overpass: https://overpass-api.de/api/interpreter
+  overpass_fallback: https://overpass.kumi.systems/api/interpreter
+  stac: https://planetarycomputer.microsoft.com/api/stac/v1
+  nlcd_wcs: https://www.mrlc.gov/geoserver/mrlc_download/NLCD_2021_Land_Cover_L48/wcs
+  ms_buildings_links: https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv
+  dsm_collection: 3dep-lidar-dsm   # STAC collection names on the stac server above
+  naip_collection: naip

@@ -1,0 +1,100 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<osm version="0.6" generator="brmap test fixture (features)">
+  <node id="500" version="1" lat="30.4304436" lon="-91.1594711"><tag k="natural" v="tree"/><tag k="leaf_type" v="broadleaved"/></node>
+  <node id="501" version="1" lat="30.4300000" lon="-91.1600000"><tag k="highway" v="traffic_signals"/></node>
+  <node id="502" version="1" lat="30.4299971" lon="-91.1597918"><tag k="highway" v="stop"/></node>
+  <node id="503" version="1" lat="30.4299941" lon="-91.1595837"><tag k="highway" v="crossing"/><tag k="crossing" v="marked"/><tag k="crossing:markings" v="zebra"/></node>
+  <node id="504" version="1" lat="30.4299912" lon="-91.1593755"><tag k="highway" v="bus_stop"/></node>
+  <node id="505" version="1" lat="31.5000000" lon="-91.5000000"><tag k="natural" v="tree"/></node>
+  <node id="506" version="1" lat="30.4286160" lon="-91.0643319"><tag k="highway" v="crossing"/><tag k="crossing" v="unmarked"/></node>
+  <node id="507" version="1" lat="30.4299883" lon="-91.1591674"><tag k="natural" v="peak"/></node>
+  <node id="1001" version="1" lat="30.4317892" lon="-91.1589253"/>
+  <node id="1002" version="1" lat="30.4317874" lon="-91.1588004"/>
+  <node id="1003" version="1" lat="30.4318776" lon="-91.1587987"/>
+  <node id="1004" version="1" lat="30.4318794" lon="-91.1589236"/>
+  <node id="1005" version="1" lat="30.4318069" lon="-91.1589041"/>
+  <node id="1006" version="1" lat="30.4318063" lon="-91.1588625"/>
+  <node id="1007" version="1" lat="30.4318424" lon="-91.1588618"/>
+  <node id="1008" version="1" lat="30.4318430" lon="-91.1589035"/>
+  <node id="1009" version="1" lat="31.0000000" lon="-92.0000000"/>
+  <node id="1010" version="1" lat="31.0000000" lon="-91.9998000"/>
+  <node id="1011" version="1" lat="31.0002000" lon="-91.9998000"/>
+  <node id="1012" version="1" lat="31.0002000" lon="-92.0000000"/>
+  <node id="1013" version="1" lat="30.5060965" lon="-91.1586205"/>
+  <node id="1014" version="1" lat="30.5060950" lon="-91.1585164"/>
+  <node id="1015" version="1" lat="30.5061852" lon="-91.1585147"/>
+  <node id="1016" version="1" lat="30.5061867" lon="-91.1586188"/>
+  <node id="1017" version="1" lat="30.4344362" lon="-91.1547110"/>
+  <node id="1018" version="1" lat="30.4344332" lon="-91.1545029"/>
+  <node id="1019" version="1" lat="30.4286030" lon="-91.1569030"/>
+  <node id="1020" version="1" lat="30.4285972" lon="-91.1564867"/>
+  <node id="1021" version="1" lat="30.4289579" lon="-91.1564799"/>
+  <node id="1022" version="1" lat="30.4289638" lon="-91.1568962"/>
+  <node id="1023" version="1" lat="30.4287361" lon="-91.1567444"/>
+  <node id="1024" version="1" lat="30.4287347" lon="-91.1566403"/>
+  <node id="1025" version="1" lat="30.4288248" lon="-91.1566386"/>
+  <node id="1026" version="1" lat="30.4288263" lon="-91.1567427"/>
+  <node id="1027" version="1" lat="30.4305096" lon="-91.1641548"/>
+  <node id="1028" version="1" lat="30.4305067" lon="-91.1639466"/>
+  <node id="1029" version="1" lat="30.4306871" lon="-91.1639433"/>
+  <node id="1030" version="1" lat="30.4306900" lon="-91.1641514"/>
+  <node id="1031" version="1" lat="30.4246763" lon="-91.1663461"/>
+  <node id="1032" version="1" lat="30.4246741" lon="-91.1661900"/>
+  <node id="1033" version="1" lat="30.4248094" lon="-91.1661875"/>
+  <node id="1034" version="1" lat="30.4248116" lon="-91.1663436"/>
+  <node id="1035" version="1" lat="30.4246704" lon="-91.1659298"/>
+  <node id="1036" version="1" lat="30.4246682" lon="-91.1657737"/>
+  <node id="1037" version="1" lat="30.4248035" lon="-91.1657712"/>
+  <node id="1038" version="1" lat="30.4248057" lon="-91.1659273"/>
+  <node id="1039" version="1" lat="30.4362106" lon="-91.1525953"/>
+  <node id="1040" version="1" lat="30.4362062" lon="-91.1522830"/>
+  <node id="1041" version="1" lat="30.4364767" lon="-91.1522779"/>
+  <node id="1042" version="1" lat="30.4364812" lon="-91.1525902"/>
+  <way id="300" version="1">
+    <nd ref="1001"/><nd ref="1002"/><nd ref="1003"/><nd ref="1004"/><nd ref="1001"/>
+    <tag k="building" v="house"/>
+  </way>
+  <way id="301" version="1">
+    <nd ref="1005"/><nd ref="1006"/><nd ref="1007"/><nd ref="1008"/><nd ref="1005"/>
+    <tag k="building:part" v="yes"/><tag k="building:levels" v="2"/>
+  </way>
+  <way id="302" version="1">
+    <nd ref="1009"/><nd ref="1010"/><nd ref="1011"/><nd ref="1012"/><nd ref="1009"/>
+    <tag k="building" v="yes"/>
+  </way>
+  <way id="303" version="1">
+    <nd ref="1013"/><nd ref="1014"/><nd ref="1015"/><nd ref="1016"/><nd ref="1013"/>
+    <tag k="building" v="yes"/>
+  </way>
+  <way id="304" version="1">
+    <nd ref="1017"/><nd ref="1018"/>
+    <tag k="building" v="yes"/>
+  </way>
+  <way id="310" version="1"><nd ref="1019"/><nd ref="1020"/><nd ref="1021"/><nd ref="1022"/><nd ref="1019"/></way>
+  <way id="311" version="1"><nd ref="1023"/><nd ref="1024"/><nd ref="1025"/><nd ref="1026"/><nd ref="1023"/></way>
+  <way id="312" version="1">
+    <nd ref="1027"/><nd ref="1028"/><nd ref="1029"/><nd ref="1030"/><nd ref="1027"/>
+    <tag k="building" v="yes"/>
+  </way>
+  <way id="313" version="1"><nd ref="1031"/><nd ref="1032"/><nd ref="1033"/><nd ref="1034"/><nd ref="1031"/></way>
+  <way id="314" version="1"><nd ref="1035"/><nd ref="1036"/><nd ref="1037"/><nd ref="1038"/><nd ref="1035"/></way>
+  <way id="315" version="1"><nd ref="1039"/><nd ref="1040"/><nd ref="1041"/><nd ref="1042"/><nd ref="1039"/></way>
+  <relation id="400" version="1">
+    <member type="way" ref="310" role="outer"/>
+    <member type="way" ref="311" role="inner"/>
+    <tag k="type" v="multipolygon"/><tag k="building" v="commercial"/><tag k="name" v="Test Mall"/>
+  </relation>
+  <relation id="401" version="1">
+    <member type="way" ref="312" role="outer"/>
+    <tag k="type" v="multipolygon"/><tag k="building" v="yes"/><tag k="building:levels" v="3"/>
+  </relation>
+  <relation id="402" version="1">
+    <member type="way" ref="313" role="outer"/>
+    <member type="way" ref="314" role="outer"/>
+    <tag k="type" v="multipolygon"/><tag k="building" v="school"/>
+  </relation>
+  <relation id="403" version="1">
+    <member type="way" ref="315" role="outer"/>
+    <tag k="type" v="multipolygon"/><tag k="landuse" v="grass"/>
+  </relation>
+</osm>

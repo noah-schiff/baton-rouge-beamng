@@ -1,0 +1,59 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<osm version="0.6" generator="brmap test fixture">
+  <node id="1" version="1" lat="30.4300" lon="-91.1700"/>
+  <node id="2" version="1" lat="30.4310" lon="-91.1690"/>
+  <node id="3" version="1" lat="30.4320" lon="-91.1680"/>
+  <node id="4" version="1" lat="31.0000" lon="-92.0000"/>
+  <node id="5" version="1" lat="31.0010" lon="-92.0010"/>
+  <node id="6" version="1" lat="30.4330" lon="-91.1670"/>
+  <node id="7" version="1" lat="30.9000" lon="-91.1670"/>
+  <node id="10" version="1" lat="30.4100" lon="-91.1800"/>
+  <node id="11" version="1" lat="30.4100" lon="-91.1780"/>
+  <node id="12" version="1" lat="30.4120" lon="-91.1780"/>
+  <node id="13" version="1" lat="30.4120" lon="-91.1800"/>
+  <node id="20" version="1" lat="30.4400" lon="-91.2000"/>
+  <node id="21" version="1" lat="30.4400" lon="-91.1900"/>
+  <node id="22" version="1" lat="30.4500" lon="-91.1900"/>
+  <node id="23" version="1" lat="30.4500" lon="-91.2000"/>
+  <node id="30" version="1" lat="30.4440" lon="-91.1960"/>
+  <node id="31" version="1" lat="30.4440" lon="-91.1940"/>
+  <node id="32" version="1" lat="30.4460" lon="-91.1950"/>
+  <node id="40" version="1" lat="32.0000" lon="-93.0000"/>
+  <node id="41" version="1" lat="32.0000" lon="-92.9900"/>
+  <node id="42" version="1" lat="32.0100" lon="-92.9900"/>
+  <way id="100" version="1">
+    <nd ref="1"/><nd ref="2"/><nd ref="3"/>
+    <tag k="highway" v="residential"/><tag k="name" v="Test Street"/>
+  </way>
+  <way id="101" version="1">
+    <nd ref="4"/><nd ref="5"/>
+    <tag k="highway" v="primary"/>
+  </way>
+  <way id="102" version="1">
+    <nd ref="6"/><nd ref="7"/>
+    <tag k="highway" v="motorway"/><tag k="oneway" v="yes"/>
+  </way>
+  <way id="103" version="1">
+    <nd ref="10"/><nd ref="11"/><nd ref="12"/><nd ref="13"/><nd ref="10"/>
+    <tag k="natural" v="water"/><tag k="name" v="Test Lake"/>
+  </way>
+  <way id="104" version="1">
+    <nd ref="1"/><nd ref="3"/>
+    <tag k="building" v="yes"/>
+  </way>
+  <way id="110" version="1"><nd ref="20"/><nd ref="21"/><nd ref="22"/></way>
+  <way id="111" version="1"><nd ref="22"/><nd ref="23"/><nd ref="20"/></way>
+  <way id="112" version="1"><nd ref="30"/><nd ref="31"/><nd ref="32"/><nd ref="30"/></way>
+  <way id="120" version="1"><nd ref="40"/><nd ref="41"/><nd ref="42"/><nd ref="40"/></way>
+  <relation id="200" version="1">
+    <member type="way" ref="110" role="outer"/>
+    <member type="way" ref="111" role="outer"/>
+    <member type="way" ref="112" role="inner"/>
+    <tag k="type" v="multipolygon"/><tag k="natural" v="water"/>
+    <tag k="water" v="river"/><tag k="name" v="Mississippi River"/>
+  </relation>
+  <relation id="201" version="1">
+    <member type="way" ref="120" role="outer"/>
+    <tag k="type" v="multipolygon"/><tag k="natural" v="water"/>
+  </relation>
+</osm>
