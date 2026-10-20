@@ -4,7 +4,15 @@ Reads raw/osm_features.json and, when cfg.buildings_microsoft and the file exist
 raw/ms_buildings.json (both from features.py); the 2 m canopy grid (canopy.load_canopy);
 out/roads.json, out/water.json and out/heights.npy. Writes out/buildings.json, a list of
 Building.to_dict(). level_content, the level.FEATURE_MODULES hook, turns that into tiles
-of COLLADA meshes (dae.py), each placed by one TSStatic.
+of COLLADA meshes (dae.py), each placed by one TSStatic. When out/landmarks.json exists, the
+buildings the landmarks take the place of (landmarks.removed, with the models of out/models)
+are left out, and the count per landmark logged. The restyled ones (the LSU campus core,
+src/brmap/data/styled.yaml) go to out/styled.json instead (split_styled), which styled.py draws.
+
+* split_styled(blds, groups) -> (rest, moved): each building whose OSM element is in a styled
+  group (its parts '/<k>' and tower parts '/t<k>' with it) moves to
+  [{"style", "group", "building": Building.to_dict()}]; run writes them to out/styled.json
+  (always, an empty list when none) and logs the group's ids not in the box.
 
 * footprints(osm_features, ms_list, extent) -> [(id, source, kind, Polygon, tags, ms_height)]:
   OSM ways and multipolygons with building=*, except building in {roof, carport,
@@ -29,6 +37,16 @@ of COLLADA meshes (dae.py), each placed by one TSStatic.
   least 3 cells, 2.5-150 m), OSM height, building:levels x 3.2 + 1, Microsoft height > 0,
   then a type default. Clamped to 2.5-150 m. NaN canopy (the lidar gap) falls through to
   the tags and defaults.
+* tower_parts(poly, ndsm, ndvi, extent, px, base_height) -> [(Polygon, height)]: the towers
+  the lidar shows rising well above a large footprint's roof (make_buildings adds each as
+  '<id>/t<k>'). The traced cells get clean outlines from orthogonalize(poly, axis, tol,
+  max_corners, rect_cover): right angles only, with at most 12 corners, along the podium's long
+  axis, snapped to their bounding rectangle when they cover RECT_COVER of it (the styled
+  buildings pass rect_cover=None to keep their OSM outlines). The
+  part's own axis takes over only for a tower turned on its podium: the two axes are not
+  both within 10 degrees of the lidar grid (whose staircase pulls a traced axis onto it), and
+  the outline along the own axis fits the cells better, both as it is and with the two cut to
+  the same number of corners.
 * Base z (make_building, in run): the lowest terrain along the outline minus 0.3 m, from
   heights.npy (lowest_ground): the ring and its holes sampled every 2 m or less, not just
   at the vertices, leaving out the points in a water body (grown by 1.5 terrain cells, so
@@ -136,7 +154,11 @@ TOWER_MIN_RISE = 12.0    # m from the roof (p75) to the top (p98): less is rooft
 TOWER_TOP_PERCENTILE = 98
 TOWER_HEIGHT_PERCENTILE = 90
 TOWER_MIN_PART = 60.0    # m2
-TOWER_SIMPLIFY = 1.0     # m
+TOWER_CORNERS = 12       # most corners a tower part's outline keeps
+TOWER_GRID_PULL = math.radians(10)  # a traced part's own axis this near the lidar grid may be the grid's doing
+STEP_TOL = 1.0           # m; orthogonalize takes out steps shorter than this
+RECT_COVER = 0.85        # an orthogonalized outline covering this share of its bounding rectangle along the axis becomes it
+SNAP_TIE = 1e-6          # rad; an edge at exactly 45 degrees to the axis snaps as if the axis were turned this much
 RES_KINDS = {"house", "detached", "semidetached_house", "residential", "terrace", "bungalow",
              "cabin", "static_caravan", "farm", "hut", "shed", "garage"}
 BRICK_KINDS = {"apartments", "dormitory", "church", "chapel", "cathedral", "school", "university",
@@ -157,6 +179,8 @@ MIN_TILE = 16.0          # m; tiles are not split below this
 QUARTERS = (("sw", -1, -1), ("se", 1, -1), ("nw", -1, 1), ("ne", 1, 1))
 SHAPES_DIR = "art/shapes/buildings"
 MATERIALS_FILE = f"{SHAPES_DIR}/main.materials.json"
+STYLED_FILE = "styled.json"  # the restyled buildings (split_styled), which styled.py draws
+LOG_IDS = 10             # building ids listed per landmark in the log
 
 # Shared texture sets, checked in content/assets/materials/tileable.zip (0.39.4): every map
 # listed is shipped there (as .dds; the game resolves the .png names). windows1 has a
@@ -500,10 +524,121 @@ def _lidar_height(poly: Polygon, ndsm, ndvi, extent: Extent, px: float) -> float
     return value if MIN_HEIGHT <= value <= MAX_HEIGHT else None
 
 
+def _long_axis(geom) -> float:
+    """The direction of the long side of geom's minimum rotated rectangle, in radians modulo pi
+    (landmarks.py turns a landmark along it too)."""
+    corners = np.asarray(geom.minimum_rotated_rectangle.exterior.coords)[:3]
+    a, b = corners[1] - corners[0], corners[2] - corners[1]
+    edge = a if math.hypot(*a) >= math.hypot(*b) else b
+    return math.atan2(edge[1], edge[0]) % math.pi
+
+
+def _orthogonal_ring(xy: np.ndarray, tol: float, max_corners: int | None) -> np.ndarray | None:
+    """The corners (N, 2) of the ring xy ((M, 2), open, turned so that the axis is +x) with
+    every edge horizontal or vertical, as orthogonalize describes; None when fewer than four
+    edges would be left."""
+    d = np.roll(xy, -1, axis=0) - xy
+    length = np.hypot(d[:, 0], d[:, 1])
+    xy, d, length = xy[length > 0], d[length > 0], length[length > 0]
+    angle = (np.arctan2(d[:, 1], d[:, 0]) + SNAP_TIE) % np.pi
+    vertical = (angle >= np.pi / 4) & (angle < 3 * np.pi / 4)  # the larger component is y
+    if vertical.all() or not vertical.any():
+        return None
+    mid = np.where(vertical, xy[:, 0] + d[:, 0] / 2, xy[:, 1] + d[:, 1] / 2)  # x of a vertical edge, y of a horizontal
+    lines: list[list] = []  # [vertical, sum of length * mid, sum of length] per run of edges snapped alike
+    for i in np.roll(np.arange(len(xy)), -int(np.flatnonzero(vertical != np.roll(vertical, 1))[0])):
+        if lines and lines[-1][0] == vertical[i]:
+            lines[-1][1] += length[i] * mid[i]
+            lines[-1][2] += length[i]
+        else:
+            lines.append([bool(vertical[i]), length[i] * mid[i], length[i]])
+    while len(lines) > 4:  # a step: line k, from line k - 1 to line k + 1 (both the other way)
+        at = np.array([s / w for _, s, w in lines])
+        step = np.abs(np.roll(at, -1) - np.roll(at, 1))
+        k = int(np.argmin(step))
+        if step[k] >= tol and (max_corners is None or len(lines) <= max_corners):
+            break
+        lines = lines[k - 1:] + lines[:k - 1]  # line k - 1 first (the last one when k is 0)
+        before, after = lines[0], lines[2]
+        lines = [[before[0], before[1] + after[1], before[2] + after[2]]] + lines[3:]
+    if len(lines) < 4:
+        return None
+    at = [s / w for _, s, w in lines]
+    return np.array([(a, b) if v else (b, a) for (v, _, _), a, b in zip(lines, at, at[1:] + at[:1])])
+
+
+def orthogonalize(poly: Polygon, axis: float | None = None, tol: float = STEP_TOL,
+                  max_corners: int | None = None, rect_cover: float | None = RECT_COVER) -> Polygon:
+    """poly with right-angled corners only, its edges along and across axis (radians from +x;
+    by default the long axis of poly's minimum rotated rectangle). Turned by -axis, every edge
+    (the holes' too) snaps to horizontal or vertical by its larger component, each run of edges
+    snapped the same way becomes one line at their length-weighted mean, and the steps (an edge
+    between two such lines) shorter than tol are taken out, shortest first, the two lines either
+    side becoming one; while a ring has more than max_corners corners, so is its shortest step
+    of any length. Turned back, the result's bounding rectangle along axis comes back instead
+    when the result covers rect_cover (RECT_COVER by default; None: never) of it, and poly's
+    minimum rotated rectangle when the result is not a valid polygon. A hole with fewer than
+    four edges left is dropped. (RECT_COVER was tuned on the lidar-traced tower parts; the
+    styled buildings keep their OSM outlines with None.)"""
+    rect = poly.minimum_rotated_rectangle
+    if rect.geom_type != "Polygon":  # nothing with an area
+        return poly
+    if axis is None:
+        axis = _long_axis(poly)
+    centre = np.asarray(rect.centroid.coords[0])
+    cos, sin = math.cos(axis), math.sin(axis)
+    turn = np.array([[cos, -sin], [sin, cos]])  # (row vector) @ turn turns it by -axis
+    outer, *holes = [_orthogonal_ring((np.asarray(r.coords)[:-1, :2] - centre) @ turn, tol, max_corners)
+                     for r in (poly.exterior, *poly.interiors)]
+    if outer is None:
+        return rect
+    out = Polygon(outer @ turn.T + centre, [h @ turn.T + centre for h in holes if h is not None])
+    if not out.is_valid or out.area <= 0:
+        return rect
+    if rect_cover is None:
+        return out
+    (x0, y0), (x1, y1) = outer.min(axis=0), outer.max(axis=0)
+    around = Polygon(np.array([(x0, y0), (x1, y0), (x1, y1), (x0, y1)]) @ turn.T + centre)
+    return around if out.area >= rect_cover * around.area else out
+
+
+def _off_grid(angle: float) -> float:
+    """How far (radians) the direction angle is from the lidar grid's (level x or y)."""
+    a = angle % (math.pi / 2)
+    return min(a, math.pi / 2 - a)
+
+
+def _fit(outline: Polygon, part: Polygon) -> float:
+    """outline's intersection over union with part."""
+    return outline.intersection(part).area / (outline.union(part).area or 1.0)
+
+
+def _tower_outline(part: Polygon, axis: float) -> Polygon:
+    """A tower part traced from the lidar cells, orthogonalized with at most TOWER_CORNERS
+    corners along the podium's long axis (axis). The part's own axis (its minimum rotated
+    rectangle's) takes over only for a tower turned on its podium, whose axis then says little
+    (a round or rambling podium). The cells' 2 m staircase misleads it two ways, so it must
+    clear both: the two axes are not both within TOWER_GRID_PULL of the grid (the staircase of
+    a tower a few degrees off the grid traces to an axis on it, and an outline along the grid
+    fits those cells better); and the outline along it fits the cells better (_fit) both as it
+    is and with the two cut to the same number of corners (along the grid, extra corners can
+    follow the staircase of a tower well off it)."""
+    podium = orthogonalize(part, axis, max_corners=TOWER_CORNERS)
+    own_axis = _long_axis(part)
+    if max(_off_grid(axis), _off_grid(own_axis)) <= TOWER_GRID_PULL:
+        return podium
+    own = orthogonalize(part, own_axis, max_corners=TOWER_CORNERS)
+    same = min(len(podium.exterior.coords), len(own.exterior.coords)) - 1
+    pairs = [(podium, own), (orthogonalize(part, axis, max_corners=same),
+                             orthogonalize(part, own_axis, max_corners=same))]
+    return own if all(_fit(o, part) > _fit(p, part) for p, o in pairs) else podium
+
+
 def tower_parts(poly: Polygon, ndsm, ndvi, extent: Extent, px: float, base_height: float) -> list[tuple]:
     """[(Polygon, height)] of the towers rising well above a large footprint's roof (the
     Capitol's tower on its wings, a downtown tower on its podium), from the lidar: the roof
-    cells above half way from the base height to the top, as polygons inside the footprint."""
+    cells above half way from the base height to the top, traced inside the footprint and
+    given clean right-angled outlines (_tower_outline)."""
     if poly.area < TOWER_MIN_AREA:
         return []
     cells = _roof_cells(poly, ndsm, ndvi, extent, px)
@@ -521,9 +656,10 @@ def tower_parts(poly: Polygon, ndsm, ndvi, extent: Extent, px: float, base_heigh
     transform = Affine(px, 0.0, -half + c0 * px, 0.0, -px, half - r0 * px)
     shapes = [shape(g) for g, _ in rasterio.features.shapes(high.astype(np.uint8), mask=high, transform=transform)]
     found = unary_union(shapes).intersection(poly) if shapes else Polygon()
+    axis = _long_axis(poly)
     out = []
     for part in _polygon_parts(found):
-        part = part.simplify(TOWER_SIMPLIFY)
+        part = _tower_outline(part, axis)
         if part.is_empty or part.area < TOWER_MIN_PART:
             continue
         inside = _roof_cells(part, ndsm, ndvi, extent, px)
@@ -739,6 +875,65 @@ def _counts(values) -> str:
     return ", ".join(f"{k} {v}" for k, v in Counter(values).most_common()) or "none"
 
 
+def _drop_landmarked(blds: list[Building], path: Path) -> list[Building]:
+    """blds without the ones the landmarks in landmarks.json take the place of (their clear
+    zones grown to what their models in models/ beside it stand on), logging how many each
+    landmark removes."""
+    from . import landmarks  # landmarks builds on this module
+
+    by_landmark = landmarks.removed_by(blds, landmarks.load_landmarks(path), path.parent / "models")
+    gone = set().union(*by_landmark.values())
+
+    def listed(ids) -> str:
+        ids = sorted(ids, key=_id_key)
+        return ", ".join(ids[:LOG_IDS]) + (", ..." if len(ids) > LOG_IDS else "")
+
+    log.info("landmarks remove %d buildings: %s", len(gone),
+             "; ".join(f"{name} {len(ids)} ({listed(ids)})" if ids else f"{name} 0"
+                       for name, ids in by_landmark.items()) or "no landmarks")
+    return [b for b in blds if b.id not in gone]
+
+
+def _osm_id(id: str) -> str:
+    """The OSM element a building comes from: its id without a part ('/<k>') or tower part ('/t<k>')."""
+    return str(id).split("/", 1)[0]
+
+
+def split_styled(blds: list[Building], groups: dict) -> tuple[list[Building], list[dict]]:
+    """(the buildings left as they are, the styled ones): each building whose OSM element is in
+    a group of styled.yaml ({group: {"style", "ids"}}), its parts and tower parts too, moves out
+    as {"style", "group", "building": Building.to_dict()}, in building order. ValueError for an
+    id listed in two groups."""
+    owner: dict[str, str] = {}
+    for group, g in groups.items():
+        for i in (g or {}).get("ids") or []:
+            if str(i) in owner:
+                raise ValueError(f"building {i} is in two styled groups, {owner[str(i)]} and {group}")
+            owner[str(i)] = group
+    rest, moved = [], []
+    for b in blds:
+        group = owner.get(_osm_id(b.id))
+        if group is None:
+            rest.append(b)
+        else:
+            moved.append({"style": groups[group]["style"], "group": group, "building": b.to_dict()})
+    return rest, moved
+
+
+def _move_styled(blds: list[Building], path: Path) -> list[Building]:
+    """blds without the styled ones (styled.yaml), which go to path (styled.json), logged."""
+    from . import styled  # styled builds on this module
+
+    groups = styled.load_registry()["groups"]
+    blds, moved = split_styled(blds, groups)
+    path.write_text(json.dumps(moved), encoding="utf-8")
+    found = {_osm_id(m["building"]["id"]) for m in moved}
+    missing = sorted({str(i) for g in groups.values() for i in g.get("ids") or []} - found, key=_id_key)
+    log.info("%d styled buildings (%s) in %s; not in this box: %s", len(moved),
+             _counts(m["group"] for m in moved), path.name, ", ".join(missing) or "none")
+    return blds
+
+
 def run(cfg, raw_dir=None, out_dir=None) -> None:
     extent = Extent.from_config(cfg)
     raw_dir, out_dir = Path(raw_dir or cfg.raw_dir), Path(out_dir or cfg.out_dir)
@@ -760,6 +955,9 @@ def run(cfg, raw_dir=None, out_dir=None) -> None:
     heights = load_heights(out_dir=out_dir)
     wet = wet_areas(water, extent, heights.shape[0])
     blds = [b for f in kept for b in make_buildings(f, ndsm, ndvi, extent, px, heights, wet)]
+    if (out_dir / "landmarks.json").exists():
+        blds = _drop_landmarked(blds, out_dir / "landmarks.json")
+    blds = _move_styled(blds, out_dir / STYLED_FILE)
     save_buildings(blds, out_dir / "buildings.json")
     log.info("%d buildings (%s); dropped: %s", len(blds), _counts(b.source for b in blds),
              _counts(why for why, ids in dropped.items() for _ in ids))

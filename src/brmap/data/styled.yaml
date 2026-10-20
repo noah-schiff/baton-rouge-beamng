@@ -1,0 +1,145 @@
+# Styled buildings (src/brmap/styled.py): the buildings drawn in a style of their own instead of the
+# generic tiles. buildings.run moves every building of a group (its parts and tower parts with it) from
+# buildings.json to styled.json; styled.level_content draws them.
+#
+#   styles:
+#     <name>:
+#       wall: <material>            # the walls, uv per floor: u = metres along the wall / bay_m (each
+#       floor_m: <m>                #   wall centred on its bays), v = metres above the base / floor_m
+#       bay_m: <m>
+#       roof: hip_tile | flat_parapet   # a hipped roof per rectangle of the footprint, or a flat roof
+#       roof_material: <material>       #   with a 1 m parapet
+#       cornice: <material>         # the 0.4 m deep band round the top of the walls
+#       floors_per_tile: <n>        # optional: floors and bays in one repeat of the wall texture
+#       bays_per_tile: <n>          #   (1 each by default)
+#   groups:
+#     <group>: {style: <name>, ids: [<OSM way or relation>, ...], floor_m: <m>}
+#                                   # floor_m, optional: the group's own floor height, in place of the style's
+#
+# Group names go into file names (br_sty_<group>_<tile>.dae): no business names. Materials are in
+# landmark_materials.yaml; each style's wall texture is texgen.facade(<style>).
+
+styles:
+  # The LSU campus core (the 1920s and 30s buildings round the Quad): tan stucco, round-arched windows,
+  # red clay tile hipped roofs with deep eaves, a cast-stone cornice.
+  lsu:
+    wall: br_sty_lsu_wall          # tex:lsu_wall (texgen.lsu_wall: one bay of one floor)
+    floor_m: 3.6
+    bay_m: 3.0
+    roof: hip_tile
+    roof_material: br_lm_roof_tile
+    cornice: br_lm_trim_stone
+
+  # The downtown standouts (plan Task 18), in the styles of the plan's table (its starting point; not
+  # checked against street photos here). Each wall is a generated facade (texgen.FACADES: 4 floors per
+  # repeat, 3.8 m each unless a group's building:levels sets them) under a flat roof inside a 1 m parapet.
+  ribbon_dark:                     # dark glass ribbons between dark bronze spandrels
+    wall: br_sty_ribbon_dark
+    floor_m: 3.8
+    bay_m: 1.5
+    floors_per_tile: 4
+    bays_per_tile: 10
+    roof: flat_parapet
+    roof_material: br_lm_concrete
+    cornice: br_lm_steel
+  precast_punched:                 # light precast concrete with punched windows
+    wall: br_sty_precast_punched
+    floor_m: 3.8
+    bay_m: 2.0
+    floors_per_tile: 4
+    bays_per_tile: 8
+    roof: flat_parapet
+    roof_material: br_lm_concrete
+    cornice: br_lm_concrete
+  brick_hotel:                     # 1920s brick, double-hung windows, stone sills and lintels
+    wall: br_sty_brick_hotel
+    floor_m: 3.8
+    bay_m: 2.4
+    floors_per_tile: 4
+    bays_per_tile: 6
+    roof: flat_parapet
+    roof_material: br_lm_concrete
+    cornice: br_lm_trim_stone
+  precast_arena:                   # fluted beige precast panels, no windows
+    wall: br_sty_precast_arena
+    floor_m: 3.8
+    bay_m: 3.0
+    floors_per_tile: 4
+    bays_per_tile: 5
+    roof: flat_parapet
+    roof_material: br_lm_concrete
+    cornice: br_lm_concrete
+  glass_blue:                      # a blue-green glass curtain wall
+    wall: br_sty_glass_blue
+    floor_m: 3.8
+    bay_m: 1.5
+    floors_per_tile: 4
+    bays_per_tile: 10
+    roof: flat_parapet
+    roof_material: br_lm_concrete
+    cornice: br_lm_steel
+
+groups:
+  campus_core:
+    style: lsu
+    ids:
+      # The Quad's edge
+      - w155026535   # Himes Hall
+      - w156100215   # Coates Hall
+      - w155026552   # Coates Hall
+      - w155026533   # Woodin Hall
+      - w156100171   # Audubon Hall
+      - w156100178   # Prescott Hall
+      - w156100189   # Stubbs Hall
+      - w156100201   # Dodson Hall
+      - w156100211
+      - w425641654   # Allen Hall
+      - w727209494   # Nicholson Hall
+      # Inside the core's hull
+      - w155026537   # Hill Memorial Library
+      - w155026560   # Thomas Boyd Hall
+      - w155026551   # David Boyd Hall
+      - w155037359   # Hatcher Hall
+      - w155037365   # Hodges Hall
+      - w155037357   # Johnston Hall
+      - w155026561   # Lockett Hall
+      - w425641653   # Journalism Building
+      - w155026536   # Art Building
+      - w155026773   # Visitor Center
+      # Checked against the photos (NAIP 2023, 1.2 m, data/raw/naip) and the lidar's roof heights (the
+      # middle half of the roof cells, out/ndsm.npy), 2026-10-19. Styled only where the roof is red clay
+      # tile, hipped:
+      - w155026554   # Howe-Russell: yes. Red tile hipped roofs on its H-shaped wings (roof heights spread
+                     #   over 3.8 m, as Allen Hall's 3.3 m); the low courtyard infill between the south arms
+                     #   is flat and grey, and is drawn tiled with the rest.
+      # w155026562   Middleton Library: no. One flat grey roof (heights within 0.1 m): a modern block.
+      # w155037367   Student Union: no. Flat grey roofs at several levels, with skylights.
+      # w155026546   Art and Design: no. A flat grey roof (within 0.3 m) with a rooftop box.
+      # w863392085   Union Theater: no. Flat grey and dark roofs round the stage house.
+      # Never styled: St Albans w155026610, Christ the King w1064486330 (churches with their own look).
+
+  # The downtown standouts (plan Task 18): one group per building, named by the plan's neutral id. A
+  # building's lidar tower parts (/t<k>) go with it. floor_m is height / building:levels where OSM tags
+  # both (the style's 3.8 m otherwise).
+  one_american_place:
+    style: ribbon_dark
+    floor_m: 3.92                  # its tower, building:part w1546031101: height 94, building:levels 24
+    ids: [w295246614]
+  tower_451_florida:
+    style: precast_punched
+    floor_m: 4.0                   # height 84, building:levels 21
+    ids: [w452000173]
+  tower_north_laurel:
+    style: precast_punched
+    floor_m: 3.33                  # height 70, building:levels 21
+    ids: [w515634563]
+  hotel_heidelberg:
+    style: brick_hotel
+    floor_m: 4.29                  # building:levels 10, no height tag: the lidar's top, 42.9 m (its tower part)
+    ids: [w295246621]
+  river_center_arena:
+    style: precast_arena
+    ids: [w452086109]
+  river_center_library:
+    style: glass_blue
+    ids: [w1065992025]             # a Microsoft footprint in OSM (source=microsoft/BuildingFootprints)

@@ -12,7 +12,11 @@ download() and remote-read helpers are reused here.
                       "polygons": [{"outer": [[lon, lat], ...],
                                     "inner": [[[lon, lat], ...], ...]}]}],
        "trees": [{"id": "n1", "lon": .., "lat": .., "tags": {...}}],
-       "nodes": [{"id": "n2", "lon": .., "lat": .., "tags": {...}}]}
+       "nodes": [{"id": "n2", "lon": .., "lat": .., "tags": {...}}],
+       "waterways": [{"id": "w3", "kind": "stream", "name": str | None, "culvert": bool,
+                      "coords": [[lon, lat], ...]}],
+       "wetlands": [{"id": "w4", "wetland": str | None, "polygons": [...]}],
+       "areas": [{"id": "w5", "tags": {...}, "polygons": [...]}]}
 
   - buildings: OSM ways ("w<id>") and multipolygon relations ("r<id>", several outers
     and holes) with building=*, whose centroid lies in the box plus cfg.buffer_m. Rings
@@ -23,6 +27,14 @@ download() and remote-read helpers are reused here.
   - trees: natural=tree nodes ("n<id>") in the box plus the buffer.
   - nodes: highway in {traffic_signals, stop, crossing} with all their tags (crossing,
     crossing:markings), for stop bars and crosswalks.
+  - waterways: open ways with waterway in WATERWAY_KINDS (river, stream, canal, ditch,
+    drain), whole, with at least one node in the box plus the buffer. A waterway area
+    (waterway=riverbank) is not one. culvert is True for tunnel=culvert|yes or culvert=yes.
+  - wetlands: natural=wetland areas (polygons as for buildings), wetland=* is the kind
+    (swamp, marsh, ...). Kept when a vertex lies in the box plus the buffer.
+  - areas: the landmark areas, with all their tags: building:part=*, leisure in
+    {stadium, pitch} and man_made=tower, kept when a vertex lies in the box plus the buffer.
+    One that is also a building=* is in buildings as well.
 * raw/ms_buildings.json, by fetch_ms_buildings(cfg, raw_dir) -> Path, only when
   cfg.buildings_microsoft: [{"ring": [[lon, lat], ...], "height": float}] for the
   Microsoft GlobalMLBuildingFootprints intersecting the box plus the buffer. Rings are
@@ -45,7 +57,9 @@ download() and remote-read helpers are reused here.
 raw/features_box.json records the box these files were cut to; when the box grows
 beyond it they are made again (see check_box).
 
-run(cfg, raw_dir=None, out_dir=None) does all four steps and logs the counts.
+run(cfg, raw_dir=None, out_dir=None) does all four steps and logs the counts. A cached
+osm_features.json without all of OSM_KEYS (one from before the waterways, wetlands and
+areas) is made again from the pbf.
 """
 from __future__ import annotations
 
@@ -80,6 +94,10 @@ NAIP_RN_FILE = "naip_rn_2m.tif"
 BOX_FILE = "features_box.json"
 QUADKEY_ZOOM = 9                     # the Microsoft footprints are split by zoom-9 quadkey
 NODE_HIGHWAYS = ("traffic_signals", "stop", "crossing")
+WATERWAY_KINDS = ("river", "stream", "canal", "ditch", "drain")  # waterway=* values that are waterways
+CULVERT_TUNNELS = ("culvert", "yes")                             # tunnel=* values that make a culvert
+AREA_LEISURE = ("stadium", "pitch")                              # leisure=* values that are landmark areas
+OSM_KEYS = ("buildings", "trees", "nodes", "waterways", "wetlands", "areas")  # the keys of osm_features.json
 US_LOCATIONS = {"unitedstates", "unitedstatesofamerica", "usa", "us"}  # lower case, letters only
 NAIP_COVER = 0.999                   # share of the box a NAIP year must cover to count as whole
 MERCATOR_LAT = 85.05112878           # the tile system's latitude limit
@@ -128,9 +146,10 @@ def _polygons(geom) -> list[dict]:
             for p in parts if not p.is_empty]
 
 
-def _in_box(extent: Extent, lim: float, lonlat: list[tuple[float, float]]) -> np.ndarray:
-    """Which of these lon/lat points lie within lim m of the box centre on both axes."""
-    if not lonlat:
+def _in_box(extent: Extent, lim: float, lonlat) -> np.ndarray:
+    """Which of these lon/lat points (a list of pairs or an n x 2 array) lie within lim m of
+    the box centre on both axes."""
+    if len(lonlat) == 0:
         return np.zeros(0, bool)
     lon, lat = np.asarray(lonlat, dtype=float).T
     x, y = extent.to_level(lon, lat)
@@ -138,7 +157,8 @@ def _in_box(extent: Extent, lim: float, lonlat: list[tuple[float, float]]) -> np
 
 
 def extract_osm_features(pbf_path, extent: Extent, buffer_m: float) -> dict:
-    """Buildings, trees and signal/stop/crossing nodes from an OSM extract (see the module doc)."""
+    """Buildings, trees, signal/stop/crossing nodes, waterways, wetlands and landmark areas
+    from an OSM extract (see the module doc)."""
     import osmium
     import shapely
 
@@ -147,11 +167,18 @@ def extract_osm_features(pbf_path, extent: Extent, buffer_m: float) -> dict:
     def near(lon: float, lat: float) -> bool:
         return w <= lon <= e and s <= lat <= n
 
+    def touches(geom) -> bool:
+        x, y = shapely.get_coordinates(geom).T
+        return bool(((w <= x) & (x <= e) & (s <= y) & (y <= n)).any())
+
     class Features(osmium.SimpleHandler):
         def __init__(self):
             super().__init__()
             self.wkb = osmium.geom.WKBFactory()
             self.buildings: list[tuple[str, dict, object]] = []
+            self.wetlands: list[tuple[str, dict, object]] = []
+            self.areas: list[tuple[str, dict, object]] = []
+            self.waterways: list[dict] = []
             self.points: dict[str, list[dict]] = {"trees": [], "nodes": []}
             self.outers: dict[int, set[int]] = {}  # building relation id -> its outer ways
             self.broken = 0
@@ -173,8 +200,26 @@ def extract_osm_features(pbf_path, extent: Extent, buffer_m: float) -> dict:
             if "building" in r.tags:
                 self.outers[r.id] = {m.ref for m in r.members if m.type == "w" and m.role in ("outer", "")}
 
+        def way(self, wy):
+            tags = wy.tags
+            kind = tags.get("waterway")  # waterway=riverbank (an area) is no kind of waterway
+            if kind not in WATERWAY_KINDS:
+                return
+            pts = [(nd.lon, nd.lat) for nd in wy.nodes if nd.location.valid()]
+            if len(pts) >= 2 and any(near(lon, lat) for lon, lat in pts):
+                self.waterways.append({
+                    "id": f"w{wy.id}", "kind": kind, "name": tags.get("name"),
+                    "culvert": tags.get("tunnel") in CULVERT_TUNNELS or tags.get("culvert") == "yes",
+                    "coords": [[round(lon, 7), round(lat, 7)] for lon, lat in pts]})
+
         def area(self, a):
-            if "building" not in a.tags:  # building:part is another key: a part alone is no building
+            tags = a.tags
+            # building:part is another key: a part alone is no building (but a landmark area)
+            building = "building" in tags
+            wetland = tags.get("natural") == "wetland"
+            landmark = ("building:part" in tags or tags.get("leisure") in AREA_LEISURE
+                        or tags.get("man_made") == "tower")
+            if not (building or wetland or landmark):
                 return
             try:
                 geom = shapely.from_wkb(self.wkb.create_multipolygon(a))
@@ -183,16 +228,24 @@ def extract_osm_features(pbf_path, extent: Extent, buffer_m: float) -> dict:
                 return
             if geom.is_empty:
                 return
-            c = geom.centroid
-            if near(c.x, c.y):
-                oid = f"{'w' if a.from_way() else 'r'}{a.orig_id()}"
-                self.buildings.append((oid, {t.k: t.v for t in a.tags}, geom))
+            oid = f"{'w' if a.from_way() else 'r'}{a.orig_id()}"
+            all_tags = {t.k: t.v for t in tags}
+            if building:
+                c = geom.centroid
+                if near(c.x, c.y):
+                    self.buildings.append((oid, all_tags, geom))
+            if (wetland or landmark) and touches(geom):
+                if wetland:
+                    self.wetlands.append((oid, all_tags, geom))
+                if landmark:
+                    self.areas.append((oid, all_tags, geom))
 
     h = Features()
     # Only objects with these keys reach the callbacks (and only such relations are
     # assembled); every node location is still kept for the ways.
     h.apply_file(str(pbf_path), locations=True,
-                 filters=[osmium.filter.KeyFilter("building", "natural", "highway")])
+                 filters=[osmium.filter.KeyFilter("building", "natural", "highway", "waterway", "leisure",
+                                                  "building:part", "man_made")])
 
     relations = {int(oid[1:]) for oid, _, _ in h.buildings if oid[0] == "r"}
     doubled = {ref for rid in relations for ref in h.outers.get(rid, ())}
@@ -204,10 +257,18 @@ def extract_osm_features(pbf_path, extent: Extent, buffer_m: float) -> dict:
     for kind, pts in h.points.items():
         inside = _in_box(extent, lim, [(p["lon"], p["lat"]) for p in pts])
         out[kind] = [p for p, k in zip(pts, inside) if k]
-    log.info("OSM features: %d buildings (%d multipolygons), %d trees, %d signal/stop/crossing nodes; "
+    # Only what has a node (a vertex) in the box plus the buffer, whole.
+    out["waterways"] = [ww for ww in h.waterways if _in_box(extent, lim, ww["coords"]).any()]
+    out["wetlands"] = [{"id": oid, "wetland": tags.get("wetland"), "polygons": _polygons(g)}
+                       for oid, tags, g in h.wetlands if _in_box(extent, lim, shapely.get_coordinates(g)).any()]
+    out["areas"] = [{"id": oid, "tags": tags, "polygons": _polygons(g)}
+                    for oid, tags, g in h.areas if _in_box(extent, lim, shapely.get_coordinates(g)).any()]
+    log.info("OSM features: %d buildings (%d multipolygons), %d trees, %d signal/stop/crossing nodes, "
+             "%d waterways (%d culverts), %d wetlands, %d landmark areas; "
              "%d broken areas skipped, %d ways counted once as their relation",
              len(out["buildings"]), sum(b["id"][0] == "r" for b in out["buildings"]), len(out["trees"]),
-             len(out["nodes"]), h.broken, len(h.buildings) - len(found))
+             len(out["nodes"]), len(out["waterways"]), sum(ww["culvert"] for ww in out["waterways"]),
+             len(out["wetlands"]), len(out["areas"]), h.broken, len(h.buildings) - len(found))
     return out
 
 
@@ -541,15 +602,30 @@ def _count(path: Path, key: str | None = None) -> int | None:
     return len(data[key] if key else data)
 
 
+def _osm_current(path: Path) -> bool:
+    """Whether raw/osm_features.json exists and has every key of OSM_KEYS. One from before the
+    waterways, wetlands and areas (or one that doesn't parse) is made again."""
+    if not _cached(path):
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError:
+        return False
+    return isinstance(data, dict) and all(k in data for k in OSM_KEYS)
+
+
 def run(cfg, raw_dir=None, out_dir=None) -> None:
     """All four inputs into raw_dir. out_dir is unused: nothing here is a stage output."""
     extent = Extent.from_config(cfg)
     raw_dir = Path(raw_dir or cfg.raw_dir)
     check_box(raw_dir, extent.bbox_utm(cfg.buffer_m))
     osm = raw_dir / OSM_FEATURES
-    if _cached(osm):
+    if _osm_current(osm):
         log.info("cached: %s", osm)
     else:
+        if _cached(osm):
+            log.info("%s is from before waterways, wetlands and areas (or unreadable); extracting it again",
+                     osm.name)
         url = cfg.sources["osm_extract"]
         pbf = download(url, raw_dir / url.rsplit("/", 1)[-1], timeout=600)
         _write_json(osm, extract_osm_features(pbf, extent, cfg.buffer_m))
@@ -560,6 +636,7 @@ def run(cfg, raw_dir=None, out_dir=None) -> None:
     dsm = fetch_dsm(cfg, raw_dir)
     naip = fetch_naip_rn(cfg, raw_dir)
     ms = _count(raw_dir / MS_BUILDINGS) if cfg.buildings_microsoft else None
-    log.info("features: %s OSM buildings, %s trees, %s nodes; %s Microsoft footprints; %d DSM tiles; %s",
-             _count(osm, "buildings"), _count(osm, "trees"), _count(osm, "nodes"),
-             "no" if ms is None else ms, len(dsm), naip.name)
+    log.info("features: %s OSM buildings, %s trees, %s nodes, %s waterways, %s wetlands, %s landmark areas; "
+             "%s Microsoft footprints; %d DSM tiles; %s",
+             _count(osm, "buildings"), _count(osm, "trees"), _count(osm, "nodes"), _count(osm, "waterways"),
+             _count(osm, "wetlands"), _count(osm, "areas"), "no" if ms is None else ms, len(dsm), naip.name)

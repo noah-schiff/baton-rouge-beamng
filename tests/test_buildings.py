@@ -1,11 +1,16 @@
 """Buildings: footprints, conflicts, heights, roofs and level content (buildings.py)."""
 import json
 import logging
+import math
 import xml.etree.ElementTree as ET
 
 import numpy as np
 import pytest
-from shapely.geometry import Polygon, box
+import shapely
+from shapely import affinity
+from shapely.geometry import Point, Polygon, box
+from shapely.geometry.polygon import orient
+from shapely.ops import unary_union
 
 from brmap import beamng_format as bf
 from brmap import buildings, canopy, dae, level
@@ -354,6 +359,183 @@ def test_make_buildings_adds_tower(small_extent):
     assert tower.id == "w1/t0" and tower.height == pytest.approx(100.0, abs=0.5)
     assert tower.base_z == base.base_z and tower.roof == "flat" and tower.wall == "glass"
     assert tower.height_source == "lidar" and tower.source == base.source and tower.kind == base.kind
+
+
+# ------------------------------------------------------------------ tower outlines
+
+NDVI0 = np.zeros((512, 512), np.float32)  # small_extent's 2 m analysis grid with no vegetation
+PODIUM_C = (100.3, -50.7)                 # off the 2 m grid
+
+
+def block(w, h, rotate=0.0, centre=(0.0, 0.0)):
+    """A w x h m rectangle centred on centre, turned rotate degrees counter-clockwise about it."""
+    cx, cy = centre
+    return affinity.rotate(box(cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2), rotate, origin=centre)
+
+
+def l_shape(a, b, t, rotate=0.0):
+    """An L with arms a m along x and b m along y, both t m thick, its outer corner at (0.7, 1.3)
+    (off the 2 m grid), turned rotate degrees counter-clockwise about that corner."""
+    x, y = 0.7, 1.3
+    ring = [(x, y), (x + a, y), (x + a, y + t), (x + t, y + t), (x + t, y + b), (x, y + b)]
+    return affinity.rotate(Polygon(ring), rotate, origin=(x, y))
+
+
+def cell_trace(poly, cell=2.0):
+    """The cell x cell squares (on a grid through the origin) whose centres lie inside poly,
+    as one polygon: the outline the lidar traces of a footprint (its largest piece)."""
+    x0, y0, x1, y1 = poly.bounds
+    xs = (np.arange(math.floor(x0 / cell), math.ceil(x1 / cell)) + 0.5) * cell
+    ys = (np.arange(math.floor(y0 / cell), math.ceil(y1 / cell)) + 0.5) * cell
+    X, Y = np.meshgrid(xs, ys)
+    inside = shapely.contains_xy(poly, X, Y)
+    found = unary_union([box(x - cell / 2, y - cell / 2, x + cell / 2, y + cell / 2)
+                         for x, y in zip(X[inside], Y[inside])])
+    return max(getattr(found, "geoms", [found]), key=lambda p: p.area)
+
+
+def interior_angles(poly):
+    """The interior angle at each corner of poly's outline in degrees (90 convex, 270 reflex)."""
+    ring = np.asarray(orient(poly, 1.0).exterior.coords)[:-1]
+    a, b = ring - np.roll(ring, 1, axis=0), np.roll(ring, -1, axis=0) - ring  # into, out of each corner
+    turn = np.degrees(np.arctan2(a[:, 0] * b[:, 1] - a[:, 1] * b[:, 0], (a * b).sum(axis=1)))
+    return 180.0 - turn
+
+
+def off_axis(poly, deg):
+    """How far (degrees) each edge of poly's outline is from deg or deg + 90."""
+    d = np.diff(np.asarray(poly.exterior.coords), axis=0)
+    a = (np.degrees(np.arctan2(d[:, 1], d[:, 0])) - deg) % 90
+    return np.minimum(a, 90 - a)
+
+
+def podium_poly(rotate=0.0):
+    """A 60 x 40 m podium centred on PODIUM_C, turned rotate degrees."""
+    return block(60, 40, rotate, PODIUM_C)
+
+
+def tower_poly(rotate=0.0, size=(30, 20), at=(10, 5)):
+    """A size (30 x 20) m tower at (10, 5) m along and across the podium from its centre,
+    turned with it."""
+    c = affinity.rotate(Point(PODIUM_C[0] + at[0], PODIUM_C[1] + at[1]), rotate, origin=PODIUM_C)
+    return block(*size, rotate, (c.x, c.y))
+
+
+def tower_on_podium(extent, rotate=0.0, **tower):
+    """small_extent's nDSM: the podium 15 m up and the tower (tower_poly(rotate, **tower)) 60 m,
+    both turned rotate degrees."""
+    ndsm, _ = canopy_grid()
+    ndsm[cells(extent, podium_poly(rotate))] = 15.0
+    ndsm[cells(extent, tower_poly(rotate, **tower))] = 60.0
+    return ndsm
+
+
+@pytest.mark.parametrize("rotate, centre", [(25.0, (3.3, -1.1)),
+                                            (45.0, (1.0, 1.0))])  # the cells' edges all 45 degrees off the axis
+def test_orthogonalize_staircase(rotate, centre):
+    stairs = cell_trace(block(20, 12, rotate, centre=centre), cell=2.0)  # the 2 m cells under the rectangle
+    out = buildings.orthogonalize(stairs)
+    assert len(out.exterior.coords) - 1 == 4
+    assert out.area == pytest.approx(240, rel=0.10)
+    assert all(abs(a - 90) < 0.5 for a in interior_angles(out))
+
+
+@pytest.mark.parametrize("rotate", [0.0, 25.0])
+def test_orthogonalize_l_shape(rotate):
+    out = buildings.orthogonalize(cell_trace(l_shape(30, 20, 12, rotate), cell=2.0))
+    assert len(out.exterior.coords) - 1 == 6
+    assert all(abs(a - 90) < 0.5 or abs(a - 270) < 0.5 for a in interior_angles(out))
+    assert out.area == pytest.approx(30 * 12 + 12 * 8, rel=0.10)
+
+
+def test_orthogonalize_small_notch_gives_the_rectangle():
+    # a 4 x 4 m notch out of a corner of a 30 x 20 m block survives the snapping (its sides are
+    # longer than tol), but the outline covers 97 % of its rectangle: the rectangle comes back
+    notched = block(30, 20, centre=(3.3, -1.1)).difference(box(14.3, 4.9, 18.3, 8.9))
+    out = buildings.orthogonalize(cell_trace(affinity.rotate(notched, 25, origin=(3.3, -1.1))))
+    assert len(out.exterior.coords) - 1 == 4 and out.area == pytest.approx(600 - 16, rel=0.10)
+    assert all(abs(a - 90) < 0.5 for a in interior_angles(out))
+
+
+@pytest.mark.parametrize("centre", [(3.3, -1.1), (1.0, 1.0)])
+def test_orthogonalize_stays_along_the_axis(centre):
+    # a 20 x 12 m block 5 degrees off the 2 m grid keeps steps longer than tol along its axis;
+    # when the result covers RECT_COVER of its rectangle, that rectangle is the one along the
+    # axis asked for, not the minimum rotated one, which turns with the staircase
+    block_ = block(20, 12, 5.0, centre=centre)
+    out = buildings.orthogonalize(cell_trace(block_), math.radians(5.0))
+    assert off_axis(out, 5.0).max() < 0.5 and out.intersection(block_).area / out.union(block_).area > 0.8
+
+
+@pytest.mark.parametrize("rotate", [0.0, 25.0])
+def test_orthogonalize_rect_cover_none_keeps_the_outline(rotate):
+    # a 60 x 20 m block with an 8 x 3 m step at one end covers 87 % of its bounding rectangle: by
+    # default (RECT_COVER 0.85) the rectangle comes back; with rect_cover=None the outline stays
+    notched = affinity.rotate(Polygon([(0, 0), (60, 0), (60, 20), (52, 20), (52, 17), (0, 17)]), rotate,
+                              origin=(0, 0))
+    assert notched.area / 1200.0 == pytest.approx(0.87)
+    assert buildings.orthogonalize(notched).area == pytest.approx(1200.0)
+    out = buildings.orthogonalize(notched, rect_cover=None)
+    assert len(out.exterior.coords) - 1 == 6 and out.area == pytest.approx(1044.0)
+    assert out.symmetric_difference(notched).area < 1e-6
+
+
+def test_orthogonalize_max_corners():
+    # a plus with rounded ends and inner corners keeps steps longer than tol round its curves;
+    # max_corners takes out the shortest of them until the plain plus is left
+    plus = affinity.translate(affinity.rotate(unary_union([box(-20, -6, 20, 6), box(-6, -20, 6, 20)]).buffer(3),
+                                              3, origin=(0, 0)), 1.1, -0.4)
+    traced, axis = cell_trace(plus), math.radians(3)
+    assert len(buildings.orthogonalize(traced, axis).exterior.coords) - 1 > 12
+    out = buildings.orthogonalize(traced, axis, max_corners=12)
+    assert len(out.exterior.coords) - 1 == 12
+    assert all(abs(a - 90) < 0.5 or abs(a - 270) < 0.5 for a in interior_angles(out))
+    assert out.intersection(plus).area / out.union(plus).area > 0.9
+
+
+def test_tower_parts_are_clean(small_extent):
+    ndsm = tower_on_podium(small_extent, rotate=25)  # a 30 x 20 m block 60 m up on a 60 x 40 m, 15 m podium
+    (part, h), = buildings.tower_parts(podium_poly(rotate=25), ndsm, NDVI0, small_extent, 2.0, 15.0)
+    assert len(part.exterior.coords) - 1 <= 8
+    assert all(abs(a % 90) < 0.5 or abs(a % 90 - 90) < 0.5 for a in interior_angles(part))
+    assert h == pytest.approx(60.0, abs=0.5) and part.area == pytest.approx(600, rel=0.10)
+    assert part.centroid.distance(tower_poly(rotate=25).centroid) < 1.0
+
+
+@pytest.mark.parametrize("podium_turn, tower_turn", [(0, 30), (35, 0)])
+def test_tower_part_turned_on_its_podium(small_extent, podium_turn, tower_turn):
+    # the podium's long axis says nothing about a tower turned 30 or 35 degrees on it (a round
+    # or rambling podium): the part's own axis fits the cells better, so the outline follows the
+    # tower, along the lidar grid too when the podium is well off the grid
+    podium, tower = block(80, 60, podium_turn, PODIUM_C), block(30, 14, tower_turn, PODIUM_C)
+    ndsm, _ = canopy_grid()
+    ndsm[cells(small_extent, podium)] = 15.0
+    ndsm[cells(small_extent, tower)] = 60.0
+    (part, h), = buildings.tower_parts(podium, ndsm, NDVI0, small_extent, 2.0, 15.0)
+    assert len(part.exterior.coords) - 1 == 4 and off_axis(part, tower_turn).max() < 3
+    assert part.intersection(tower).area / part.union(tower).area > 0.9 and h == pytest.approx(60.0, abs=0.5)
+
+
+@pytest.mark.parametrize("rotate", [2.0, 3.0, 4.0])
+def test_tower_parts_stay_along_a_podium_near_the_grid(small_extent, rotate):
+    # a tower a few degrees off the 2 m lidar grid traces to a staircase that the grid pulls the
+    # part's own axis onto, and an outline along the grid fits those cells better: that is the
+    # raster's doing, so the outline stays along the podium, as the tower does
+    ndsm = tower_on_podium(small_extent, rotate=rotate)
+    (part, h), = buildings.tower_parts(podium_poly(rotate), ndsm, NDVI0, small_extent, 2.0, 15.0)
+    tower = tower_poly(rotate)
+    assert off_axis(part, rotate).max() < 0.5
+    assert part.intersection(tower).area / part.union(tower).area > 0.85 and h == pytest.approx(60.0, abs=0.5)
+
+
+def test_small_tower_well_off_the_grid_stays_along_its_podium(small_extent):
+    # a 12 x 7 m tower turned 24 degrees with its podium traces to so few cells that their own
+    # axis lands on the grid, where an outline with a few more corners follows their staircase
+    # better; cut to the four corners of the podium's outline it fits worse, so it stays
+    ndsm = tower_on_podium(small_extent, rotate=24, size=(12, 7))
+    (part, h), = buildings.tower_parts(podium_poly(24), ndsm, NDVI0, small_extent, 2.0, 15.0)
+    assert len(part.exterior.coords) - 1 == 4 and off_axis(part, 24).max() < 0.5
+    assert part.centroid.distance(tower_poly(24, size=(12, 7)).centroid) < 1.0
 
 
 # ------------------------------------------------------------------ bases

@@ -20,7 +20,8 @@ from brmap.water import WaterBody, save_water
 FIXTURES = Path(__file__).parent / "fixtures"
 # Microsoft's footprints supply most of the buildings and are under the ODbL too
 CREDITS = ("Map data © OpenStreetMap contributors (ODbL). Building footprints © Microsoft (ODbL). "
-           "Elevation and surface: USGS 3DEP. Imagery: USDA NAIP. Land cover: MRLC NLCD.")
+           "Elevation and surface: USGS 3DEP. Imagery: USDA NAIP. Land cover: MRLC NLCD. "
+           "Textures: ambientCG and Poly Haven (CC0).")
 
 
 def small_cfg():
@@ -321,6 +322,7 @@ def test_info_json(level_dir):
     assert info["defaultSpawnPointName"] in names
     assert {p["objectname"] for p in info["spawnPoints"]} == names
     assert level.CREDITS == CREDITS and info["description"].endswith(" " + CREDITS)
+    assert "landmarks" in info["description"] and "swamps" in info["description"]
     assert info["size"] == [1024, 1024] and info["previews"] == ["baton_rouge_preview.jpg"]
     assert info["supportsTraffic"] is True and info["roadRules"] == {"turnOnRed": True}
     assert "\u2014" not in json.dumps(info, ensure_ascii=False)
@@ -347,23 +349,70 @@ def test_preview(level_dir):
         assert im.size == (1024, 576) and im.format == "JPEG"
 
 
-def test_zip_root_is_levels(level_dir, tmp_path):
+PLATE = "vehicles/common/licenseplates/baton_rouge/licensePlate-default.sktemplate.json"
+
+
+def test_level_writes_a_licence_plate_design(level_dir):
+    # 0.40 looks for vehicles/common/licenseplates/<level>/licensePlate-default.sktemplate.json and logs
+    # a warning when the level has none
+    design = json.loads((level_dir.parents[1] / PLATE).read_text(encoding="utf-8"))
+    assert (design["version"], design["type"], design["name"]) == (3, "licenseplate", "baton_rouge")
+    assert list(design["format"]) == ["30-15"]
+    fmt = design["format"]["30-15"]
+    assert fmt["size"] == [512, 256] and fmt["normal"].startswith("vehicles/common/licenseplates/default/")
+    assert [c["text"] for c in fmt["root"]["children"]] == ["{plate}"]
+    plate = design["vars"]["plate"]
+    assert plate["default"] == "{D}{d}{d} {c}{c}{c}"  # three digits and three letters, as Louisiana's
+    assert set(plate["charsets"]) == {"D", "d", "c"}
+    files = [v for v in (fmt["background"], fmt["normal"]) if not v.startswith("#")]
+    assert all(f.startswith("vehicles/common/licenseplates/default/") for f in files)  # no state's graphics
+
+
+def test_level_rewrites_the_plate_design_folder(tmp_path):
+    make_inputs(tmp_path / "data" / "out")
+    stale = tmp_path / "stage" / "vehicles" / "common" / "licenseplates" / "baton_rouge" / "old.png"
+    stale.parent.mkdir(parents=True)
+    stale.write_bytes(b"old")
+    level.write_level(small_cfg(), tmp_path / "stage", tmp_path / "data" / "out")
+    assert not stale.exists() and (tmp_path / "stage" / PLATE).exists()
+
+
+def test_zip_holds_the_level_and_its_plate_design(level_dir, tmp_path):
     z = level.zip_mod(level_dir.parents[1], tmp_path / "out.zip", "baton_rouge")
     with zipfile.ZipFile(z) as zf:
         names = zf.namelist()
-    assert names and all(n.startswith("levels/baton_rouge/") for n in names)
-    assert "levels/baton_rouge/info.json" in names
+    trees = ("levels/baton_rouge/", "vehicles/common/licenseplates/baton_rouge/")
+    assert names and all(n.startswith(trees) for n in names)
+    assert "levels/baton_rouge/info.json" in names and PLATE in names
 
 
 def test_zip_leaves_out_other_levels_in_the_stage_folder(level_dir, tmp_path):
-    stale = level_dir.parent / "old_name"  # left over from a build under another level name
-    stale.mkdir()
-    (stale / "info.json").write_text("{}", encoding="utf-8")
-    z = level.zip_mod(level_dir.parents[1], tmp_path / "out.zip", "baton_rouge")
+    stage = level_dir.parents[1]
+    for stale in (level_dir.parent / "old_name",  # left over from a build under another level name
+                  stage / "vehicles" / "common" / "licenseplates" / "old_name", stage / "vehicles" / "common"):
+        stale.mkdir(parents=True, exist_ok=True)
+        (stale / "info.json").write_text("{}", encoding="utf-8")
+    (stage / "stray.txt").write_text("x", encoding="utf-8")
+    z = level.zip_mod(stage, tmp_path / "out.zip", "baton_rouge")
     with zipfile.ZipFile(z) as zf:
         names = zf.namelist()
-    assert "levels/baton_rouge/info.json" in names
-    assert not any(n.startswith("levels/old_name/") for n in names)
+    assert "levels/baton_rouge/info.json" in names and PLATE in names
+    assert all(n.startswith(("levels/baton_rouge/", "vehicles/common/licenseplates/baton_rouge/")) for n in names)
+
+
+def test_zip_deflates_dds_but_stores_png(tmp_path):
+    # block-compressed DDS still deflates well (flat and repeated blocks); PNG and JPEG don't
+    folder = tmp_path / "stage" / "levels" / "x"
+    folder.mkdir(parents=True)
+    for name in ("a.dds", "b.png", "c.jpg", "d.json"):
+        (folder / name).write_bytes(b"\x00\x01\x02\x03" * 4096)
+    z = level.zip_mod(tmp_path / "stage", tmp_path / "out.zip", "x")
+    with zipfile.ZipFile(z) as zf:
+        kinds = {i.filename: i.compress_type for i in zf.infolist()}
+        assert zf.read("levels/x/a.dds") == b"\x00\x01\x02\x03" * 4096  # round trip
+        assert zf.getinfo("levels/x/a.dds").compress_size < 1000
+    assert kinds == {"levels/x/a.dds": zipfile.ZIP_DEFLATED, "levels/x/b.png": zipfile.ZIP_STORED,
+                     "levels/x/c.jpg": zipfile.ZIP_STORED, "levels/x/d.json": zipfile.ZIP_DEFLATED}
 
 
 def _road(kind, lanes=2, oneway=False, maxspeed=None, is_bridge=False, covered=False):
@@ -471,7 +520,7 @@ def test_level_feature_hook(tmp_path, monkeypatch):
     from brmap.geo import Extent
     from brmap.roads import load_roads
 
-    assert level.FEATURE_MODULES == ("buildings", "trees", "markings")
+    assert level.FEATURE_MODULES == ("buildings", "styled", "trees", "markings", "landmarks", "bayous", "dressing")
     data = tmp_path / "data" / "out"
     make_inputs(data)
     xs = np.linspace(-300, 300, 31)
@@ -528,6 +577,57 @@ def test_level_ships_collected_compiled_meshes(tmp_path, monkeypatch):
     names = zipfile.ZipFile(z).namelist()
     assert "levels/baton_rouge/art/shapes/buildings/tile.cdae" in names
     assert "levels/baton_rouge/art/shapes/buildings/tile.dae" in names
+
+
+def test_level_ships_imposters_only_for_the_materials_they_were_made_with(tmp_path, monkeypatch, caplog):
+    # meshcache.apply runs after the feature modules wrote the materials its fingerprints read: imposters
+    # collected from one build ship with the next identical one, and not once a material the tree binds changes
+    import logging
+    import os
+    import time
+    from brmap import meshcache
+    data = tmp_path / "data" / "out"
+    make_inputs(data)
+    (data / "trees.json").write_text("[]", encoding="utf-8")
+    tint = {"value": [1, 1, 1, 1]}
+    shape = "art/shapes/trees/br_swamp/t.dae"
+
+    def level_content(cfg, data_dir, root, heights, extent):
+        dae = Path(root) / shape
+        dae.parent.mkdir(parents=True, exist_ok=True)
+        dae.write_text('<COLLADA><library_materials><material id="br_moss-material" name="br_moss"/>'
+                       '</library_materials></COLLADA>', encoding="utf-8")
+        dae.with_name(dae.name + ".asset.json").write_text('{"imposters": []}', encoding="utf-8")
+        (Path(root) / "art/shapes/trees/br_trees.materials.json").write_text(json.dumps({"br_moss": {
+            "name": "br_moss", "mapTo": "br_moss", "Stages": [{"baseColorFactor": tint["value"]}, {}, {}, {}]}}),
+            encoding="utf-8")
+        return {}
+
+    mod = types.ModuleType("brmap.trees")
+    mod.level_content = level_content
+    monkeypatch.setitem(sys.modules, "brmap.trees", mod)
+    root = level.write_level(small_cfg(), tmp_path / "stage", data)
+    temp, later = tmp_path / "temp", time.time() + 5          # the game's first load, after the build
+    for name in ("t.cdae", "t.dae.imposter.dds", "t.dae.imposter_normals.dds"):
+        made = temp / "art/shapes/trees/br_swamp" / name
+        made.parent.mkdir(parents=True, exist_ok=True)
+        made.write_bytes(b"made in game")
+        os.utime(made, (later, later))
+    assert meshcache.collect(root, temp, data / "cdae") == (1, [])
+
+    def shipped():
+        return sorted(p.name for p in (root / "art/shapes/trees/br_swamp").glob("t.*") if p.suffix in (".cdae", ".dds"))
+
+    with caplog.at_level(logging.INFO, logger="brmap"):
+        root = level.write_level(small_cfg(), tmp_path / "stage", data)
+    assert shipped() == ["t.cdae", "t.dae.imposter.dds", "t.dae.imposter_normals.dds"]
+    assert "imposters: 1 pairs shipped, 0 withheld" in caplog.text
+    tint["value"] = [0.65, 0.65, 0.5, 1]
+    caplog.clear()
+    with caplog.at_level(logging.INFO, logger="brmap"):
+        root = level.write_level(small_cfg(), tmp_path / "stage", data)
+    assert shipped() == ["t.cdae"]
+    assert "imposters: 0 pairs shipped, 1 withheld" in caplog.text
 
 
 def test_level_feature_hook_rejects_bad_groups(tmp_path, monkeypatch):

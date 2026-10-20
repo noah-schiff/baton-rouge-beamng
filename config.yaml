@@ -17,6 +17,7 @@ bridges:
   clearance_m: 5.5         # minimum deck height above the ground below
   overrides:               # OSM bridge name -> deck peak above the straight line, m
     Horace Wilkinson Bridge: 52.0
+  dressing: true           # concrete side barriers and piers on the bridge decks
 
 level:
   name: baton_rouge        # folder under levels/ in the mod zip
@@ -37,12 +38,29 @@ buildings:
 
 trees:
   max_count: 250000        # cap on tree instances; over it, the tallest in each 50 m cell stay first
+  swamp: true              # cypress and tupelo in woody wetlands and along bayous
+  moss_share: 0.30         # share of developed-area live oaks that carry Spanish moss (0 to 1)
 
 markings:
   enabled: true            # lane lines, stop bars and crosswalks on motorway to tertiary roads
 
 traffic:
   enabled: true            # info.json supportsTraffic: AI traffic can be switched on in Freeroam
+
+blender:
+  exe: C:/Desktop/blender.exe  # headless Blender that runs the landmark and tree scripts
+
+textures:
+  max_size: 1024           # longest side of a converted texture, px (256 to 4096, a power of two)
+
+landmarks:
+  enabled: true            # modelled landmarks replace the generic buildings on their footprints
+
+bayous:
+  enabled: true            # bayous, creeks and canals drawn as still water; the terrain is not carved
+  kinds: [river, stream, canal, ditch, drain]  # OSM waterway values (the Mississippi is excluded by its polygon)
+  min_length_m: 0          # drop waterways shorter than this
+  node_spacing_m: 10       # distance between nodes on a bayou centreline
 
 sources:
   osm_extract: https://download.geofabrik.de/north-america/us/louisiana-latest.osm.pbf

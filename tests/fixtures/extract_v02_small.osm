@@ -1,0 +1,60 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<osm version="0.6" generator="brmap test fixture (features v0.2)">
+  <node id="2001" version="1" lat="30.4311483" lon="-91.1646634"/>
+  <node id="2002" version="1" lat="30.4313067" lon="-91.1630988"/>
+  <node id="2003" version="1" lat="30.4310141" lon="-91.1615426"/>
+  <node id="2004" version="1" lat="30.4308117" lon="-91.1599848"/>
+  <node id="2005" version="1" lat="30.4308873" lon="-91.1589422"/>
+  <node id="2006" version="1" lat="30.4311358" lon="-91.1573759"/>
+  <node id="2007" version="1" lat="30.4309785" lon="-91.1558172"/>
+  <node id="2008" version="1" lat="30.4273235" lon="-91.1621324"/>
+  <node id="2009" version="1" lat="30.4273089" lon="-91.1610916"/>
+  <node id="2010" version="1" lat="30.4277598" lon="-91.1610831"/>
+  <node id="2011" version="1" lat="30.4277745" lon="-91.1621239"/>
+  <node id="2012" version="1" lat="30.4272575" lon="-91.1574488"/>
+  <node id="2013" version="1" lat="30.4272428" lon="-91.1564081"/>
+  <node id="2014" version="1" lat="30.4279643" lon="-91.1563945"/>
+  <node id="2015" version="1" lat="30.4279790" lon="-91.1574353"/>
+  <node id="2016" version="1" lat="30.4322622" lon="-91.1604781"/>
+  <node id="2017" version="1" lat="30.4322563" lon="-91.1600617"/>
+  <node id="2018" version="1" lat="30.4326171" lon="-91.1600550"/>
+  <node id="2019" version="1" lat="30.4326229" lon="-91.1604713"/>
+  <node id="2020" version="1" lat="30.4264480" lon="-91.1640227"/>
+  <node id="2021" version="1" lat="30.4264333" lon="-91.1629819"/>
+  <node id="2022" version="1" lat="30.4270647" lon="-91.1629701"/>
+  <node id="2023" version="1" lat="30.4270793" lon="-91.1640108"/>
+  <node id="2024" version="1" lat="31.0000000" lon="-92.0000000"/>
+  <node id="2025" version="1" lat="31.0003000" lon="-91.9995000"/>
+  <way id="600" version="1">
+    <nd ref="2001"/><nd ref="2002"/><nd ref="2003"/>
+    <tag k="waterway" v="stream"/><tag k="name" v="Test Creek"/>
+  </way>
+  <way id="601" version="1">
+    <nd ref="2003"/><nd ref="2004"/><nd ref="2005"/>
+    <tag k="waterway" v="stream"/><tag k="tunnel" v="culvert"/>
+  </way>
+  <way id="602" version="1">
+    <nd ref="2005"/><nd ref="2006"/><nd ref="2007"/>
+    <tag k="waterway" v="stream"/><tag k="name" v="Test Creek"/>
+  </way>
+  <way id="610" version="1">
+    <nd ref="2008"/><nd ref="2009"/><nd ref="2010"/><nd ref="2011"/><nd ref="2008"/>
+    <tag k="waterway" v="riverbank"/>
+  </way>
+  <way id="620" version="1">
+    <nd ref="2012"/><nd ref="2013"/><nd ref="2014"/><nd ref="2015"/><nd ref="2012"/>
+    <tag k="natural" v="wetland"/><tag k="wetland" v="swamp"/>
+  </way>
+  <way id="630" version="1">
+    <nd ref="2016"/><nd ref="2017"/><nd ref="2018"/><nd ref="2019"/><nd ref="2016"/>
+    <tag k="building:part" v="yes"/><tag k="height" v="53"/>
+  </way>
+  <way id="640" version="1">
+    <nd ref="2020"/><nd ref="2021"/><nd ref="2022"/><nd ref="2023"/><nd ref="2020"/>
+    <tag k="leisure" v="stadium"/><tag k="name" v="Test Stadium"/>
+  </way>
+  <way id="650" version="1">
+    <nd ref="2024"/><nd ref="2025"/>
+    <tag k="waterway" v="stream"/><tag k="name" v="Far Creek"/>
+  </way>
+</osm>

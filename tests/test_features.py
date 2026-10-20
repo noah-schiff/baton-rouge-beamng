@@ -1,5 +1,6 @@
 """features: OSM footprints and nodes, Microsoft footprints, the lidar DSM and NAIP red/NIR."""
 import gzip
+import hashlib
 import json
 import math
 from dataclasses import replace
@@ -21,7 +22,8 @@ from brmap.config import Config
 from brmap.geo import Extent
 from rasters import write_dem
 
-OSM = Path(__file__).parent / "fixtures" / "extract_features_small.osm"
+FIX = Path(__file__).parent / "fixtures"
+OSM = FIX / "extract_features_small.osm"
 LINKS = "https://ms.test/global-buildings/dataset-links.csv"
 
 
@@ -82,6 +84,158 @@ def test_extract_tree_and_signal_nodes(extent):
         "n503": {"highway": "crossing", "crossing": "marked", "crossing:markings": "zebra"},
     }
     assert json.loads(json.dumps(j)) == j  # plain JSON all the way down
+
+
+def _sha1(obj) -> str:
+    return hashlib.sha1(json.dumps(obj).encode("utf-8")).hexdigest()
+
+
+def test_existing_keys_unchanged(extent, small_extent):
+    # buildings, trees and nodes of the old fixture are byte for byte what the code gave before
+    # waterways, wetlands and areas were added (the SHA-1s of json.dumps of each list)
+    golden = {
+        (8192.0, 500.0): {"buildings": (5, "b6215acb323477cb62622fba945874597c341d4f"),
+                          "trees": (1, "f76911fef4503adfa3de8f26c0bda510676cdef6"),
+                          "nodes": (3, "fc8b7b0ae4a0b09ebf9fca1b4ba3aa05e5f2bd5e")},
+        (512.0, 100.0): {"buildings": (4, "30bb841686dbfd36fcea977757c19016d1bc7ea3"),
+                         "trees": (1, "f76911fef4503adfa3de8f26c0bda510676cdef6"),
+                         "nodes": (3, "fc8b7b0ae4a0b09ebf9fca1b4ba3aa05e5f2bd5e")},
+    }
+    for ext, buf in ((extent, 500.0), (small_extent, 100.0)):
+        out = features.extract_osm_features(OSM, ext, buf)
+        for key, (n, sha) in golden[(ext.half_size, buf)].items():
+            assert (len(out[key]), _sha1(out[key])) == (n, sha), key
+    # the one building:part of that fixture (w301) is an area now, and still no building
+    out = features.extract_osm_features(OSM, extent, 500.0)
+    assert [a["id"] for a in out["areas"]] == ["w301"] and "w301" not in {b["id"] for b in out["buildings"]}
+    assert out["waterways"] == [] and out["wetlands"] == []  # r403 is grass, not a wetland
+
+
+def test_extract_waterways(small_extent):
+    out = features.extract_osm_features(FIX / "extract_v02_small.osm", small_extent, 100.0)
+    ww = {w["id"]: w for w in out["waterways"]}
+    assert {w["kind"] for w in ww.values()} == {"stream"} and len(ww) == 3
+    assert sum(w["culvert"] for w in ww.values()) == 1
+    assert all(len(w["coords"]) >= 2 for w in ww.values())
+    # w650 is a stream far outside the box and w610 a river bank (an area)
+    assert set(ww) == {"w600", "w601", "w602"}
+    assert ww["w601"]["culvert"] and ww["w601"]["name"] is None
+    assert ww["w600"]["name"] == "Test Creek" and ww["w600"]["culvert"] is False
+    # ordered along the way, in [lon, lat], and the middle way starts where the first one ends
+    assert ww["w600"]["coords"][-1] == ww["w601"]["coords"][0]
+    x, y = small_extent.to_level(*np.asarray(ww["w600"]["coords"], dtype=float).T)
+    np.testing.assert_allclose(x, [-450, -300, -150], atol=0.05)
+    np.testing.assert_allclose(y, [120, 140, 110], atol=0.05)
+    assert json.loads(json.dumps(out)) == out
+
+
+def test_extract_wetlands_and_areas(small_extent):
+    out = features.extract_osm_features(FIX / "extract_v02_small.osm", small_extent, 100.0)
+    assert [w["wetland"] for w in out["wetlands"]] == ["swamp"]
+    tags = {a["id"]: a["tags"] for a in out["areas"]}
+    assert any(t.get("building:part") and t.get("height") == "53" for t in tags.values())
+    assert any(t.get("leisure") == "stadium" for t in tags.values())
+    # nothing else: no river bank, no swamp (it has its own key), no stream
+    assert set(tags) == {"w630", "w640"} and tags["w640"] == {"leisure": "stadium", "name": "Test Stadium"}
+    (swamp,) = out["wetlands"]
+    assert swamp["id"] == "w620" and len(swamp["polygons"]) == 1 and swamp["polygons"][0]["inner"] == []
+    area = Polygon(_level(small_extent, swamp["polygons"][0]["outer"])).area
+    assert area == pytest.approx(100 * 80, rel=0.01)
+    # the new keys leave the buildings alone: a building:part is not a building
+    assert out["buildings"] == [] and out["trees"] == [] and out["nodes"] == []
+
+
+def _osm(path, ext, ways=(), relations=()):
+    """Write an OSM file: ways are (id, [(x, y), ...] in level metres, tags), relations are
+    (id, [(way id, role)], tags). Every way gets its own nodes."""
+    def tag_xml(tags):
+        return "".join('<tag k="%s" v="%s"/>' % kv for kv in tags.items())
+
+    nodes, lines, nid = [], [], 0
+    for wid, pts, tags in ways:
+        refs = []
+        for x, y in pts:
+            nid += 1
+            lon, lat = ext.to_lonlat(x, y)
+            nodes.append('<node id="%d" version="1" lat="%.7f" lon="%.7f"/>' % (nid, lat, lon))
+            refs.append('<nd ref="%d"/>' % nid)
+        lines.append('<way id="%d" version="1">%s%s</way>' % (wid, "".join(refs), tag_xml(tags)))
+    for rid, members, tags in relations:
+        m = "".join('<member type="way" ref="%d" role="%s"/>' % wr for wr in members)
+        lines.append('<relation id="%d" version="1">%s%s</relation>' % (rid, m, tag_xml(tags)))
+    path.write_text('<?xml version="1.0" encoding="UTF-8"?><osm version="0.6">' + "".join(nodes + lines)
+                    + "</osm>", encoding="utf-8")
+    return path
+
+
+def _sq(x, y, size=40.0):
+    return [(x, y), (x + size, y), (x + size, y + size), (x, y + size), (x, y)]
+
+
+def test_extract_waterway_kinds_and_culverts(tmp_path, small_extent):
+    def line(i):
+        return [(-300.0 + 10 * i, 50.0 * i), (-250.0 + 10 * i, 50.0 * i + 20)]
+
+    kinds = ["river", "stream", "canal", "ditch", "drain", "weir", "dam", "riverbank", "lock_gate"]
+    ways = [(10 + i, line(i), {"waterway": kind}) for i, kind in enumerate(kinds)]
+    ways += [(30, line(-1), {"waterway": "canal", "tunnel": "culvert"}),
+             (31, line(-2), {"waterway": "ditch", "tunnel": "yes", "name": "Under The Road"}),
+             (32, line(-3), {"waterway": "drain", "culvert": "yes"}),
+             (33, line(-4), {"waterway": "stream", "tunnel": "building_passage"}),
+             (34, line(-5), {"waterway": "stream", "culvert": "no"})]
+    out = features.extract_osm_features(_osm(tmp_path / "k.osm", small_extent, ways), small_extent, 100.0)
+    ww = {w["id"]: w for w in out["waterways"]}
+    assert {w["kind"] for w in ww.values()} == {"river", "stream", "canal", "ditch", "drain"}
+    assert set(ww) == {"w%d" % i for i in (10, 11, 12, 13, 14, 30, 31, 32, 33, 34)}  # no weir, dam, bank, gate
+    assert {i for i, w in ww.items() if w["culvert"]} == {"w30", "w31", "w32"}
+    assert ww["w31"]["name"] == "Under The Road" and ww["w10"]["name"] is None
+
+
+def test_extract_keeps_only_what_has_a_node_in_the_box(tmp_path, small_extent):
+    # the box is +-512 m, +-612 m with the buffer
+    ways = [(1, [(-700, 0), (-600, 0), (-500, 0), (700, 0)], {"waterway": "river"}),   # node at -600: kept whole
+            (2, [(-700, 700), (700, 700)], {"waterway": "river"}),                       # misses the box
+            (3, [(-700, -605), (-700, -700)], {"waterway": "river"}),                    # all outside
+            (4, _sq(590, 590, 20), {"natural": "wetland", "wetland": "marsh"}),          # corner node at 590: kept
+            (5, _sq(620, 0, 20), {"natural": "wetland"}),                                # outside
+            (6, _sq(0, 640, 20), {"leisure": "pitch"}),                                  # outside
+            (7, _sq(-10, -10, 20), {"leisure": "pitch"})]                                # inside
+    osm = _osm(tmp_path / "b.osm", small_extent, ways)
+    out = features.extract_osm_features(osm, small_extent, 100.0)
+    assert [w["id"] for w in out["waterways"]] == ["w1"] and len(out["waterways"][0]["coords"]) == 4
+    assert [(w["id"], w["wetland"]) for w in out["wetlands"]] == [("w4", "marsh")]
+    assert [a["id"] for a in out["areas"]] == ["w7"]
+    # with no buffer the marsh corner at 590 is out of the +-512 m box, the river node at -500 is in
+    out0 = features.extract_osm_features(osm, small_extent, 0.0)
+    assert [w["id"] for w in out0["waterways"]] == ["w1"] and out0["wetlands"] == []
+
+
+def test_extract_area_kinds_and_building_overlap(tmp_path, small_extent):
+    ways = [(1, _sq(-300, -300), {"leisure": "pitch"}),
+            (2, _sq(-250, -300), {"leisure": "park"}),
+            (3, _sq(-200, -300), {"man_made": "tower", "tower:type": "communication"}),
+            (4, _sq(-150, -300), {"man_made": "pier"}),
+            (5, _sq(-100, -300), {"building": "yes", "leisure": "stadium"}),     # a building and an area
+            (6, _sq(-50, -300), {"building": "yes", "building:part": "yes"}),      # likewise
+            (7, _sq(0, -300), {"building": "yes"}),                                # a building only
+            (8, _sq(50, -300), {"building:part": "yes", "building:levels": "3"})]  # an area only
+    out = features.extract_osm_features(_osm(tmp_path / "a.osm", small_extent, ways), small_extent, 100.0)
+    assert {a["id"] for a in out["areas"]} == {"w1", "w3", "w5", "w6", "w8"}
+    assert {b["id"] for b in out["buildings"]} == {"w5", "w6", "w7"}
+    assert {a["id"]: a["tags"] for a in out["areas"]}["w5"] == {"building": "yes", "leisure": "stadium"}
+
+
+def test_extract_wetland_multipolygon(tmp_path, small_extent):
+    ways = [(1, _sq(0, 0, 100), {}), (2, _sq(40, 40, 20), {})]
+    rel = [(9, [(1, "outer"), (2, "inner")], {"type": "multipolygon", "natural": "wetland", "wetland": "marsh"})]
+    out = features.extract_osm_features(_osm(tmp_path / "m.osm", small_extent, ways, rel), small_extent, 100.0)
+    (marsh,) = out["wetlands"]
+    assert marsh["id"] == "r9" and marsh["wetland"] == "marsh"
+    (part,) = marsh["polygons"]
+    (hole,) = part["inner"]
+    assert Polygon(_level(small_extent, part["outer"])).area == pytest.approx(10000, rel=0.01)
+    assert Polygon(_level(small_extent, hole)).area == pytest.approx(400, rel=0.01)
+    assert part["outer"][0] == part["outer"][-1]
 
 
 # ---------------------------------------------------------------- Microsoft footprints
@@ -270,7 +424,7 @@ def test_naip_year_must_cover_box():
 
 def test_run_does_each_step_and_caches_osm(tmp_path, monkeypatch):
     calls = []
-    empty = {"buildings": [], "trees": [], "nodes": []}
+    empty = {"buildings": [], "trees": [], "nodes": [], "waterways": [], "wetlands": [], "areas": []}
     monkeypatch.setattr(features, "download", lambda url, dest, **k: calls.append("pbf") or dest)
     monkeypatch.setattr(features, "extract_osm_features",
                         lambda pbf, ext, buf: calls.append(("osm", pbf.name, buf)) or empty)
@@ -288,6 +442,27 @@ def test_run_does_each_step_and_caches_osm(tmp_path, monkeypatch):
     calls.clear()
     features.run(replace(cfg, buildings_microsoft=True))
     assert calls == [("ms", raw), ("dsm", raw), ("naip", raw)]  # the OSM extract is cached
+
+
+def test_run_extracts_osm_again_when_the_cache_predates_waterways(tmp_path, monkeypatch):
+    calls = []
+    new = {"buildings": [], "trees": [], "nodes": [], "waterways": [], "wetlands": [], "areas": []}
+    monkeypatch.setattr(features, "download", lambda url, dest, **k: dest)
+    monkeypatch.setattr(features, "extract_osm_features", lambda pbf, ext, buf: calls.append("osm") or new)
+    monkeypatch.setattr(features, "fetch_dsm", lambda cfg, raw: [])
+    monkeypatch.setattr(features, "fetch_naip_rn", lambda cfg, raw: raw / "naip_rn_2m.tif")
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    cfg = Config(debug_half_size_m=512.0, raw_dir=str(raw), buildings_microsoft=False)
+    osm = raw / "osm_features.json"
+    osm.write_text(json.dumps({"buildings": [], "trees": [], "nodes": []}), encoding="utf-8")  # as in v0.1
+    features.run(cfg)
+    assert calls == ["osm"] and json.loads(osm.read_text(encoding="utf-8")) == new
+    features.run(cfg)
+    assert calls == ["osm"]  # now it is current
+    osm.write_text("{broken", encoding="utf-8")  # unreadable: made again as well
+    features.run(cfg)
+    assert calls == ["osm", "osm"]
 
 
 def test_cached_outputs_cleared_when_box_grows(tmp_path):

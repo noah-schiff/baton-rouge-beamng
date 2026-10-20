@@ -1,0 +1,146 @@
+# Custom forest items: tree models built in Blender by the models stage (brmap.models) and placed
+# by the trees stage (brmap.trees) like the stock trees. Each entry:
+#
+#   br_<key>:
+#     script: blender/trees/<name>.py   # relative to the repo; builds out/models/<key>/main.npz
+#     params: {...}                     # all the script gets (its shape name is its out folder's); a
+#                                       # moss overlay's hang_points_from: <oak> reaches it as that
+#                                       # oak's hang_points (brmap.models.moss_params)
+#     native_height: m                  # the model's height at scale 1 (trees.assign scales to the lidar)
+#     collision: {trunk_radius_m, height_m}   # the Colmesh-1 trunk prism, from the origin up
+#     item: {...}                       # TSForestItemData fields (not name, class or shapeFile)
+#     materials: [br_...]               # what the model binds, from tree_materials.yaml
+#     billboard: bool                   # the model has bb_autobillboard25 and gets imposters
+#
+# The shape goes to the level's art/shapes/trees/br_swamp/<key>.dae.
+
+# Bald cypress (Taxodium distichum): a flared, fluted base, knees, a straight tapering trunk and a
+# narrow, flat-topped crown of horizontal branches. The swamp tree of the wetlands (trees.species).
+# Its item fields are the stock holm oak's (italy holm_oak_test, stock_trees.json br_holm_oak).
+br_cypress_a:
+  script: blender/trees/bald_cypress.py
+  params: {height_m: 22, seed: 11, knees: 8}
+  native_height: 22
+  collision: {trunk_radius_m: 0.7, height_m: 8.0}
+  item:
+    annotation: NATURE
+    branchAmp: 0.100000001
+    detailAmp: 0.200000003
+    detailFreq: 0.5
+    mass: 10
+    tightnessCoefficient: 1
+    trunkBendScale: 0.0500000007
+    windScale: 0.5
+  materials: [br_tree_cypress_bark, br_tree_cypress_leaves]
+  billboard: true
+
+# The same bald cypress hung with Spanish moss (the script's moss param): a sixth of the swamp trees.
+br_cypress_b:
+  script: blender/trees/bald_cypress.py
+  params: {height_m: 20, seed: 12, knees: 10, moss: true}
+  native_height: 20
+  collision: {trunk_radius_m: 0.7, height_m: 8.0}
+  item:
+    annotation: NATURE
+    branchAmp: 0.100000001
+    detailAmp: 0.200000003
+    detailFreq: 0.5
+    mass: 10
+    tightnessCoefficient: 1
+    trunkBendScale: 0.0500000007
+    windScale: 0.5
+  materials: [br_tree_cypress_bark, br_tree_cypress_leaves, br_tree_moss]
+  billboard: true
+
+# Water tupelo (Nyssa aquatica): a swollen bottle base, a straight trunk and a narrow oval crown of ovate
+# leaves; the cypress's companion in the swamps and on the bayou banks. The cypress's item fields.
+br_tupelo_a:
+  script: blender/trees/water_tupelo.py
+  params: {height_m: 18, seed: 21}
+  native_height: 18
+  collision: {trunk_radius_m: 0.9, height_m: 8.0}
+  item:
+    annotation: NATURE
+    branchAmp: 0.100000001
+    detailAmp: 0.200000003
+    detailFreq: 0.5
+    mass: 10
+    tightnessCoefficient: 1
+    trunkBendScale: 0.0500000007
+    windScale: 0.5
+  materials: [br_tree_tupelo_bark, br_tree_tupelo_leaves]
+  billboard: true
+
+# Spanish moss overlays, one per stock live oak (trees.LIVE_OAKS): "br_moss_" + the oak's key without
+# "br_". trees.level_content stands one with each live oak whose trees.json entry has moss, at the oak's
+# position, rotation and scale. models.run turns hang_points_from into the points moss_points.json
+# holds for that oak (tools/extract_moss_points.py: the undersides of its bark) and builds them only
+# while trees.moss_share is over 0. native_height and item are the oak's (stock_trees.json), so the
+# moss sways with the trunk; no collision mesh and no billboard (the oak's imposter shows far off).
+br_moss_oak_dry_a:
+  script: blender/trees/moss_drape.py
+  params: {hang_points_from: br_oak_dry_a}
+  native_height: 8.83
+  collision: {trunk_radius_m: 0, height_m: 0}
+  item:
+    branchAmp: 0.100000001
+    detailAmp: 0.5
+    detailFreq: 0.5
+    rigidity: 5
+    tightnessCoefficient: 1
+    trunkBendScale: 0.0399999991
+    windScale: 0.5
+  materials: [br_tree_moss]
+  billboard: false
+
+br_moss_cork_oak_large_1:
+  script: blender/trees/moss_drape.py
+  params: {hang_points_from: br_cork_oak_large_1}
+  native_height: 13.89
+  collision: {trunk_radius_m: 0, height_m: 0}
+  item:
+    annotation: NATURE
+    branchAmp: 0.100000001
+    detailAmp: 0.200000003
+    detailFreq: 0.5
+    mass: 10
+    tightnessCoefficient: 1
+    trunkBendScale: 0.0500000007
+    windScale: 0.5
+  materials: [br_tree_moss]
+  billboard: false
+
+br_moss_tree_oak_large_b:
+  script: blender/trees/moss_drape.py
+  params: {hang_points_from: br_tree_oak_large_b}
+  native_height: 15.89
+  collision: {trunk_radius_m: 0, height_m: 0}
+  item:
+    branchAmp: 0.400000006
+    dampingCoefficient: 0.200000003
+    detailAmp: 0.400000006
+    detailFreq: 5
+    mass: 200
+    rigidity: 100
+    tightnessCoefficient: 4
+    trunkBendScale: 0.00999999978
+    windScale: 0.400000006
+  materials: [br_tree_moss]
+  billboard: false
+
+br_moss_holm_oak:
+  script: blender/trees/moss_drape.py
+  params: {hang_points_from: br_holm_oak}
+  native_height: 12.86
+  collision: {trunk_radius_m: 0, height_m: 0}
+  item:
+    annotation: NATURE
+    branchAmp: 0.100000001
+    detailAmp: 0.200000003
+    detailFreq: 0.5
+    mass: 10
+    tightnessCoefficient: 1
+    trunkBendScale: 0.0500000007
+    windScale: 0.5
+  materials: [br_tree_moss]
+  billboard: false

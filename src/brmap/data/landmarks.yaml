@@ -1,0 +1,207 @@
+# Landmarks modelled in Blender and placed on their real footprints by the landmarks stage
+# (src/brmap/landmarks.py), in place of the generic buildings and trees there. Each entry:
+#
+#   <name>:                    # the shape's name: out/models/<name>/, art/shapes/landmarks/<name>.dae
+#     title: ...               # for people; not shipped
+#     model: ...               # the Blender script, from the repo root (or "styled")
+#     anchor: {osm: <id>} | {lat: ..., lon: ...}    # the model's origin (an OSM polygon's centroid)
+#     yaw: {from: <id>} | {azimuth_deg: ...}        # the model's +u axis: that OSM polygon's long
+#                              # axis, or a compass bearing (0 north, 90 east); both modulo 180 deg
+#     footprint: {osm: [<id>, ...]} | {ring: [[lat, lon], ...]}   # cut to keep off the roads beside it
+#     replaces: [<id>, ...]    # the OSM elements whose generic buildings (buildings.json, with their
+#                              # parts <id>/<k>) the model takes the place of (the buildings stage warns
+#                              # of an id that matches no building, or one outside the clear zone)
+#     clear_pad_m: ...         # m round the footprint kept clear of generic buildings and trees
+#     params: {...}            # given to the model script, with footprint_local and ground_dz added;
+#                              # keep_off_roads: false leaves the footprint whole by every road beside it
+#                              # (for a cut over 2 % of it), {except: [w<id>, ...]} by those ways only
+#     sources: {...}           # a cited source for every param in landmarks.CITED
+#
+# OSM ids name entries of raw/osm_features.json "buildings" or "areas".
+
+memorial_tower:
+  title: Memorial Tower
+  model: blender/landmarks/memorial_tower.py
+  anchor: {osm: w550888707}          # the bell tower (building:part, man_made=tower, height=53)
+  yaw: {from: w550888707}
+  footprint: {osm: [w155026538]}     # the tower with its wings
+  replaces: [w155026538]
+  clear_pad_m: 2.0
+  params:
+    height_m: 53.3
+    shaft_m: [8.0, 6.6]
+  sources:
+    height_m: "OSM w550888707 height=53; published 175 ft"
+
+tiger_stadium:
+  title: Tiger Stadium
+  model: blender/landmarks/tiger_stadium.py
+  anchor: {osm: r1640828}            # the bowl (building=stadium): outer ring and the field hole
+  yaw: {azimuth_deg: 156}            # the pitch's long axis (w119361456, 156/336 deg): +u to the north end
+  footprint: {osm: [r1640828]}       # its outer ring (50,316 m2, 268.6 x 232.8 m)
+  replaces: []                       # none by id: the bowl r1640828 is dropped for Powerhouse Lane's corridor before the
+  #                                    landmarks look, the leisure=stadium area w515632965 is no building, and the
+  #                                    clear zone takes the Microsoft footprints (ms40045)
+  clear_pad_m: 3
+  params:
+    rim: lidar                       # landmarks.rim_profile: the rim height by azimuth from the ndsm
+    rim_m: [20, 55]                  # the rim heights the profile is held to (lowest, highest)
+    pitch: w119361456                # leisure=pitch: pitch_local, pitch_yaw and field_dz
+    field_m: [109.73, 48.77]         # the field with its end zones: 120 x 53 1/3 yd
+  sources:
+    rim_m: "lidar ndsm by azimuth from the bowl's centroid (2026-10-19): north 285-15 deg 20-31 m, east 30-90 deg 45.6-48.4 m, SE and south 105-195 deg 48.4-55.1 m, west 210-270 deg 44.1-49.9 m"
+    field_m: "NCAA football rules: the field is 360 x 160 ft (120 x 53 1/3 yd) with its end zones; OSM pitch w119361456 is 111 x 50 m"
+
+# The three below use yaw azimuth 90 (+u east, +v north), so their scripts read compass bearings
+# (b -> model angle 90 - b) and the habitat's params are metres east and north of its node.
+
+pmac:
+  title: Pete Maravich Assembly Center
+  model: blender/landmarks/pmac.py
+  anchor: {lat: 30.414255, lon: -91.184495}   # the dome's centre: the lidar's contours are circles round it (within 1.1 m)
+  yaw: {azimuth_deg: 90}
+  footprint: {osm: [w133751599]}     # the dome and its north annex (13,963 m2)
+  replaces: [w133751599]
+  clear_pad_m: 3
+  params:
+    diameter_m: 106                  # the ring wall
+    crown_m: 30.6
+    wall_m: 16
+    ribs: 45
+    rib_az_deg: 4.6                  # the compass bearing of one rib (the others every 360 / ribs)
+    annex_m: 10.8                    # the north annex: the footprint outside the podium ring
+    entrances_az_deg: [30, 180, 305]
+  sources:
+    diameter_m: "lidar ndsm round the anchor (out_lsu, 2026-10-19): the 16 m contour is a circle of radius 54.9 m; the dome's edge falls from 18.6 m at r 52 to 15.9 m at r 54"
+    crown_m: "lidar ndsm round the anchor: 30.2-30.5 m (90th percentile 30.5) at r 4-12 m; the skylight dips to 28.6 m"
+    wall_m: "lidar ndsm round the anchor: 15.9 m at r 54, the dome's foot"
+    ribs: "counted on NAIP 2023 (data/raw/naip, la_m_3009139_se and _sw): the rib feet are bright tabs round the rim; a comb of 45 every 8 deg fits them (median miss 0.65 deg, against 1.36 for 44 and 1.25 for 46) and the FFT of the rim strip peaks at 45 (docs/screenshots/v02/ref_pmac.png, ref_pmac_ribs.png)"
+    rib_az_deg: "the same comb's phase on NAIP 2023"
+    annex_m: "lidar ndsm: median 10.8 m (quartiles 9.3-11.4) over the footprint outside r 63 m (the north annex, 3,142 m2)"
+    entrances_az_deg: "NAIP 2023: the ramps meet the ring at the north-east (30 deg) and north-west (305 deg) and the south plaza at 180 deg; OSM has no entrance nodes on w133751599"
+
+alex_box:
+  title: Alex Box Stadium, Skip Bertman Field
+  model: blender/landmarks/alex_box.py
+  anchor: {osm: w133888808}          # the ballpark (leisure=stadium)
+  yaw: {azimuth_deg: 90}
+  footprint: {osm: [w133888808]}     # 24,988 m2
+  replaces: [w1148083778, w1148083777, w1148083776]   # the stands round home and the lines; two outfield bleachers
+  clear_pad_m: 2
+  params:
+    rim_m: 19                        # the grandstand roof's front edge, above the ground
+    home_az_deg: 202                 # home plate's bearing from the mound
+    field: r17708790                 # leisure=pitch: field_local (the field round the infield, the infield grass round the mound) and field_dz
+    bases_m: 27.43
+    mound_m: 18.44
+    outlines: [w1148083777, w1148083776]   # the outfield bleachers: outlines_local
+  sources:
+    rim_m: "lidar ndsm by azimuth from the anchor (out_lsu, 2026-10-19): the grandstand roof is 18.5-19.2 m at r 50-58 m on azimuths 150-255, 18 m at r 70, then 15 m (the concourse block) to r 86-92"
+    home_az_deg: "OSM r17708790's infield grass: its corners lie at bearings 112 and 299 (first and third base) and 22-33 (second) from the mound, so home is at about 205; NAIP 2023 gives 203; the grandstand's lidar arc (150-255) centres on 202"
+    bases_m: "baseball rules: 90 ft between the bases"
+    mound_m: "baseball rules: 60 ft 6 in from the pitcher's rubber to home plate"
+    outlines: "lidar ndsm: w1148083777 2.7-6.3 m (median 4.4), w1148083776 2.5-4.1 m: bleachers beyond the outfield wall"
+
+mike_habitat:
+  title: Mike the Tiger's habitat
+  model: blender/landmarks/mike_habitat.py
+  anchor: {lat: 30.4134234, lon: -91.1850659}   # OSM node n4610681494 (tourism=attraction); osm_features.json keeps no such nodes
+  yaw: {azimuth_deg: 90}
+  footprint:                         # the enclosure and the night house (1,291 m2)
+    ring: [[30.4132996, -91.1852451], [30.4132928, -91.1850787], [30.4132283, -91.1849862], [30.4133967, -91.1847697],
+           [30.4134791, -91.1848567], [30.4135434, -91.1849388], [30.4135894, -91.1850004], [30.4136391, -91.1850047],
+           [30.4136405, -91.1851087], [30.4135820, -91.1851150], [30.4135702, -91.1852401]]
+  replaces: []                       # none inside
+  clear_pad_m: 1
+  params:                            # metres east and north of the node
+    tower_m: 14.3                    # the night house's tower, top
+    night_house_m: [0.4, 20.1]       # the tower's centre
+    pool_m: [[5.0, -14.5], [11.5, -13.0], [18.5, -16.0], [12.5, -19.5], [8.0, -19.5]]
+    stream_m: [[5.5, 12.5], [5.0, 5.0], [5.5, -3.0], [6.0, -9.0], [7.5, -13.5]]   # from the falls to the pool
+    rocks_m: [[-13.0, 14.0, 3.5, 4.0], [-8.0, 14.5, 3.0, 4.0], [5.5, 13.5, 3.0, 4.0], [-10.0, 2.5, 4.0, 4.5]]   # [x, y, radius, height]
+    viewing_m: [[-17.0, -14.0], [-1.0, -14.5], [8.0, -21.5], [28.5, -2.5]]   # the public edge along the paved walk
+  sources:
+    footprint: "traced from NAIP 2023, data/raw/naip"
+    tower_m: "lidar ndsm (out_lsu and out, 2026-10-19): the only return above 6 m within 20 m of the node, 14.3 m on four 2 m cells round full-map (-2378, -1856) under a red tile roof on NAIP 2023"
+    night_house_m: "the centre of those four lidar cells"
+    pool_m: "traced from NAIP 2023, data/raw/naip: the dark water in the enclosure's south tip"
+    stream_m: "traced from NAIP 2023, data/raw/naip: the channel from the rocks by the night house down to the pool"
+    rocks_m: "NAIP 2023 and lidar: the 4-6 m returns along the north edge, by the head of the stream and round (-10, 2.5)"
+    viewing_m: "traced from NAIP 2023, data/raw/naip: the enclosure's edge along the pink paved walk"
+
+# Downtown (plan Task 18), outside the LSU test map: checked with the Blender previews and resolve() on
+# the full map's data. Both turn with their footprint's long axis (+u about east, +v north).
+
+capitol:
+  title: Louisiana State Capitol
+  model: blender/landmarks/capitol.py
+  anchor: {osm: w97757524}           # the footprint's centroid
+  yaw: {from: w97757524}             # 2.9 deg north of east
+  footprint: {osm: [w97757524]}      # 3,411 m2: the wings and the centre block
+  replaces: [w97757524]              # its lidar tower part (w97757524/t0) goes with it
+  clear_pad_m: 3                     # the grand steps reach 26 m south of it (in the clear zone through
+  #                                    the collision mesh: landmarks.ground_outline)
+  params:
+    height_m: 137
+    wings_m: 21
+    centre_m: 30
+    setbacks: [[60, 24, 22], [100, 14, 14], [110, 10, 10], [118, 6, 6]]   # [from_m, width_m, depth_m]
+    # keep_off_roads: the 2 % rule overridden for the model's budget. Two service drives end at the wings'
+    # north walls (where the covered passage w824026178 runs under the Capitol): cut by the round ends of
+    # their corridors (19.6 m2, 0.57 %), the walls would get two 2.5 m notches (20 -> 87 corners) and the
+    # a30 level 381 triangles (budget 300). Every other road it keeps off
+    keep_off_roads: {except: [w97757425, w824026179]}
+  sources:
+    height_m: "published 450 ft (137 m) to the top of the lantern; the lidar's 2 m cells clip the thin top at 123 m"
+    wings_m: "lidar ndsm (data/out, 2026-10-19): the wings' roofs 19-22 m"
+    centre_m: "lidar ndsm: the centre block's roofs 26-30 m south of the tower (most of it 23-25 m)"
+    setbacks: "lidar ndsm round the tower: returns over 60 m span 24 x 22 m, over 100 m 14 x 14, over 110 m 10 x 10, 118-123 m 6 x 6; 40-55 m shoulders round the shaft below 60 m"
+
+old_capitol:
+  title: Old State Capitol
+  model: blender/landmarks/old_capitol.py
+  anchor: {osm: w515632945}          # the footprint's centroid
+  yaw: {from: w515632945}            # 2.5 deg north of east
+  footprint: {osm: [w515632945]}     # 1,687 m2: the wings, the entrance blocks north and south, the towers
+  replaces: [w515632945]
+  clear_pad_m: 2
+  params:
+    height_m: 26.3
+    towers_m: 35.9
+  sources:
+    height_m: "lidar ndsm (data/out, 2026-10-19): the 75th percentile over the footprint; the entrance blocks and their towers read 24-27 m, the wings 19-21 m, the corner towers 23-24 m"
+    towers_m: "lidar ndsm: the highest return over the footprint, 35.9 m, on the raised roof over the rotunda at the centre (34-36 m over 10 x 12 m, 28-33 m round it)"
+
+# The Mississippi River bridge (plan Task 19), outside the LSU test map: checked with the Blender
+# preview and resolve() against the full map's roads.json. Its model stands over the two I-10 decks
+# (params.decks; resolve gives it deck_local, from_u, to_u and peaks_u); its footprint is in the air,
+# so validate checks the roads only against what the model stands on (its piers).
+
+wilkinson_truss:
+  title: Horace Wilkinson Bridge (the I-10 Mississippi River bridge's cantilever truss)
+  model: blender/landmarks/wilkinson_truss.py
+  anchor: {lat: 30.4396461, lon: -91.198343}   # the point on w181653662 at full-map x -3700 (y 1009.9)
+  yaw: {azimuth_deg: 273.16}         # along w181653662 between the truss's ends (176.84 deg from +x)
+  footprint:                         # a thin rectangle round both decks between the ends, 2 m past their
+    ring:                            # outer edges (880 x 36 m): it removes nothing
+      - [30.439455, -91.193781]
+      - [30.440019, -91.2029227]
+      - [30.4396951, -91.2029493]
+      - [30.4391311, -91.1938076]
+  replaces: []
+  clear_pad_m: 0
+  params:
+    decks: [w181653662, w682521449]  # the westbound and the eastbound deck, 13.8 m wide, 3 lanes each
+    from_lon: -91.2029294            # the truss's west end: full-map x -4141 on w181653662
+    to_lon: -91.1937876              # its east end: x -3262
+    peaks_lon: [-91.1965543, -91.200423]   # the two peaks over the main piers: x -3528 and -3900
+    top_m: [16, 24]                  # the top chord above the deck: at the ends (and mid-span), over the peaks
+    clear_m: 6.0                     # the portal and sway bracing overhead stays this far above the deck
+    panel_m: 15                      # the truss's panel length
+  sources:
+    from_lon: "lidar ndsm (data/out, 2026-10-19): returns over 40 m along the decks from full-map x -4141 to -3262 (about 880 m)"
+    to_lon: "lidar ndsm: the truss's east end at x -3262"
+    peaks_lon: "lidar ndsm: the top chord's two peaks at x -3528 and -3900 (77 and 84 m NAVD88), 372 m apart: the main span"
+    top_m: "lidar ndsm against the deck: the top chord 16-24 m above the deck, highest over the main piers"
+    clear_m: "the plan (2026-10-19, Task 19): 6 m, over the 16 ft (4.9 m) an interstate needs under a structure"
+    panel_m: "the plan (2026-10-19, Task 19): 15 m panels, an estimate (not measured)"

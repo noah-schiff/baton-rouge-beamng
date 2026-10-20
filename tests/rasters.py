@@ -1,7 +1,14 @@
-"""Helpers that write small synthetic GeoTIFFs for the raster tests."""
+"""Helpers that write small synthetic GeoTIFFs for the raster tests, and synthetic height grids."""
 import numpy as np
 import rasterio
 from rasterio.transform import from_origin
+
+
+def slope_east(extent, z0, k, n=256):
+    """An n x n north-up height grid over the extent rising to the east, z = z0 + k * (x + half)
+    at every cell centre, so bilinear sampling gives that plane inside the outer centres."""
+    xs, _ = extent.pixel_centers(n)
+    return np.tile(z0 + k * (xs + extent.half_size), (n, 1))
 
 
 def write_dem(path, extent, fn, res=2.0, margin=200.0, nodata=-999999.0,

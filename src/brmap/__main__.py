@@ -10,7 +10,8 @@ from pathlib import Path
 
 from .config import load_config
 
-FEATURE_STAGES = ["features", "canopy", "buildings", "trees", "markings"]
+FEATURE_STAGES = ["features", "canopy", "textures", "landmarks", "models", "bayous", "buildings", "trees",
+                  "markings", "dressing"]
 STAGES = ["fetch", "terrain", "water", "imagery", "roads", *FEATURE_STAGES, "level", "validate"]
 # terrain runs twice: once raw, then again to carve the water bodies into it.
 ALL_ORDER = ["fetch", "terrain", "water", "terrain", "imagery", "roads", *FEATURE_STAGES, "level",

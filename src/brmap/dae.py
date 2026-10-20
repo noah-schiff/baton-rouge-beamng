@@ -24,6 +24,8 @@ layout follows the stock building shapes and was loaded in game in the spike (0.
   texture repeat is one floor high.
 * A tile's buildings are handled together, column-wise (numpy and vectorized shapely),
   since the map has a hundred thousand of them.
+* The COLLADA text itself is written by collada.py (shared with the models); the tiles use
+  its TILE decimals, which must never change: the shipped .cdae files only fit these bytes.
 """
 from __future__ import annotations
 
@@ -34,9 +36,10 @@ import numpy as np
 import shapely
 from shapely.geometry import Polygon
 
+from . import collada
+
 FULL, LOW, NULL, COLLISION = "bld_L300", "bld_L60", "nulldetail15", "Colmesh-1"
 LODS = (FULL, LOW, COLLISION)            # the levels that hold geometry
-COLLADA_NS = "http://www.collada.org/2005/11/COLLADASchema"
 
 WALL_MATERIALS = {"res": "br_bld_wall_res", "brick": "br_bld_wall_brick",
                   "concrete": "br_bld_wall_concrete", "glass": "br_bld_wall_glass"}
@@ -262,13 +265,13 @@ class _Mesh:
                             np.asarray(mats, np.int64)))
         self.n += len(pos)
 
-    def arrays(self):
-        """(positions, normals, uvs, colours, {material: triangles}) with materials in name order."""
+    def to_mesh(self) -> collada.Mesh:
+        """The vertices and the triangles of each material, in name order."""
         if not self.chunks:
-            return np.zeros((0, 3)), np.zeros((0, 3)), np.zeros((0, 2)), np.zeros((0, 4)), {}
+            return collada.Mesh(np.zeros((0, 3)), np.zeros((0, 3)), np.zeros((0, 2)), np.zeros((0, 4)), {})
         pos, nrm, uv, col, tris, mats = (np.concatenate(c) for c in zip(*self.chunks))
-        return pos, nrm, uv, col, {m: tris[mats == c] for m, c in sorted(self.codes.items())
-                                   if (mats == c).any()}
+        return collada.Mesh(pos, nrm, uv, col, {m: tris[mats == c] for m, c in sorted(self.codes.items())
+                                                if (mats == c).any()})
 
 
 def _walls(mesh: _Mesh, r: _Rings, origin, z0, z1, codes, colours) -> None:
@@ -430,69 +433,12 @@ def _meshes(plan: _Plan, origin) -> dict[str, _Mesh]:
     return meshes
 
 
-# ------------------------------------------------------------------ COLLADA text
-
-def _numbers(a: np.ndarray, decimals: int) -> str:
-    """Space-separated values rounded to `decimals`, with no '-0' and no trailing '.0'."""
-    text = " ".join(map(repr, (np.round(np.asarray(a, float), decimals) + 0.0).ravel().tolist())) + " "
-    return text.replace(".0 ", " ").rstrip()
-
-
-def _source(gid: str, name: str, values: np.ndarray, params: str, decimals: int) -> str:
-    count, stride = len(values), len(params)
-    p = "".join(f'<param name="{c}" type="float"/>' for c in params)
-    return (f'<source id="{gid}-{name}"><float_array id="{gid}-{name}-array" count="{count * stride}">'
-            f'{_numbers(values, decimals)}</float_array><technique_common>'
-            f'<accessor source="#{gid}-{name}-array" count="{count}" stride="{stride}">{p}</accessor>'
-            f'</technique_common></source>')
-
-
-def _geometry(gid: str, arrays) -> str:
-    pos, nrm, uv, col, tris = arrays
-    inputs = (f'<input semantic="VERTEX" source="#{gid}-vertices" offset="0"/>'
-              f'<input semantic="NORMAL" source="#{gid}-normals" offset="0"/>'
-              f'<input semantic="TEXCOORD" source="#{gid}-uvs" offset="0" set="0"/>'
-              f'<input semantic="COLOR" source="#{gid}-colors" offset="0" set="0"/>')
-    prims = "".join(f'<triangles material="{m}-material" count="{len(t)}">{inputs}'
-                    f'<p>{" ".join(map(str, t.ravel().tolist()))}</p></triangles>' for m, t in tris.items())
-    return (f'<geometry id="{gid}" name="{gid}"><mesh>'
-            + _source(gid, "positions", pos, "XYZ", 2) + _source(gid, "normals", nrm, "XYZ", 3)
-            + _source(gid, "uvs", uv, "ST", 3) + _source(gid, "colors", col, "RGBA", 3)
-            + f'<vertices id="{gid}-vertices"><input semantic="POSITION" source="#{gid}-positions"/></vertices>'
-            + prims + "</mesh></geometry>")
-
-
-def _instance(gid: str, materials) -> str:
-    bind = "".join(f'<instance_material symbol="{m}-material" target="#{m}-material"/>' for m in materials)
-    return (f'<instance_geometry url="#{gid}"><bind_material><technique_common>{bind}'
-            f'</technique_common></bind_material></instance_geometry>')
-
+# ------------------------------------------------------------------ the tile's shape
 
 def tile_dae(buildings, origin_xy) -> tuple[str, dict[str, int]]:
     """The .dae text of one tile and its vertex count per level of detail ({bld_L300, bld_L60,
     Colmesh-1}). x and y are written relative to origin_xy."""
-    meshes = _meshes(_plan(buildings), origin_xy)
-    arrays = {lod: meshes[lod].arrays() for lod in LODS}
-    materials = sorted({m for lod in LODS for m in arrays[lod][4]})
-    gid = {lod: f"{lod}-mesh" for lod in LODS}
-    effects = "".join(f'<effect id="{m}-effect"><profile_COMMON><technique sid="common"><lambert>'
-                      f'<diffuse><color>0.8 0.8 0.8 1</color></diffuse></lambert></technique>'
-                      f'</profile_COMMON></effect>' for m in materials)
-    library = "".join(f'<material id="{m}-material" name="{m}"><instance_effect url="#{m}-effect"/>'
-                      f'</material>' for m in materials)
-    nodes = "".join(f'<node id="{lod}" name="{lod}">{_instance(gid[lod], arrays[lod][4])}</node>'
-                    if lod != NULL else f'<node id="{NULL}" name="{NULL}"/>'
-                    for lod in (FULL, LOW, NULL, COLLISION))
-    xml = ('<?xml version="1.0" encoding="utf-8"?>\n'
-           f'<COLLADA xmlns="{COLLADA_NS}" version="1.4.1">\n'
-           '<asset><unit name="meter" meter="1"/><up_axis>Z_UP</up_axis></asset>\n'
-           f'<library_effects>{effects}</library_effects>\n'
-           f'<library_materials>{library}</library_materials>\n'
-           '<library_geometries>\n' + "\n".join(_geometry(gid[lod], arrays[lod]) for lod in LODS)
-           + '\n</library_geometries>\n'
-           '<library_visual_scenes><visual_scene id="Scene" name="Scene">'
-           f'<node id="base00" name="base00"><node id="start01" name="start01">{nodes}</node>'
-           '<node id="collision-1" name="collision-1"/></node>'
-           '</visual_scene></library_visual_scenes>\n'
-           '<scene><instance_visual_scene url="#Scene"/></scene>\n</COLLADA>\n')
-    return xml, {lod: meshes[lod].n for lod in LODS}
+    meshes = {lod: m.to_mesh() for lod, m in _meshes(_plan(buildings), origin_xy).items()}
+    xml = collada.shape_dae([(FULL, meshes[FULL]), (LOW, meshes[LOW]), (NULL, None),
+                             (COLLISION, meshes[COLLISION])], decimals=collada.TILE)
+    return xml, {lod: collada.vertex_count(meshes[lod]) for lod in LODS}

@@ -13,10 +13,34 @@ output that exists:
   buffered by width / 2; every class, bridge decks included), and the base within 1 m
   of the lowest terrain along the footprint's walls, found as the buildings stage does
   (buildings.lowest_ground: sampled every 2 m, the points in a water body left out).
+  The styled buildings of styled.json are checked the same way, along the outlines their walls
+  follow (styled.drawn_buildings), and drawn in the overlay with the others.
 * trees.json: no tree within 1.5 m of a road corridor or 3 m of a bridge deck's, or
   inside a footprint, and z within 1 m of the terrain.
-* The terrain for both is the one the level writes, cut under the bridge decks.
+* landmarks.json: no drivable road (landmarks.ground_roads: drivability > 0, so not a covered
+  passage, and not a bridge deck) with its centreline across the footprint shrunk 0.5 m, nor
+  across what the model stands on (landmarks.ground_outline from out/models, shrunk 0.5 m: a
+  model can reach past its footprint), nor with its corridor grown to width / 2 - 0.5 m (the
+  buildings' rule) reaching into either (the lanes beside it; not for the roads the landmark's
+  params.keep_off_roads exempts, landmarks.exempt_ways), and the base no more than 1 m above the
+  lowest terrain along the footprint's outline (sampled every 2 m). A landmark over bridge decks
+  (params.decks: the Wilkinson truss) is in the air over its footprint, so only what its model
+  stands on counts. The lanes cut the footprint (landmarks.resolve keeps it off them and records
+  the cut as lane_cut in landmarks.json), which hides a road across it from the checks above: so
+  the cut itself may take no more than LANE_CUT_SHARE (2 %) of the footprint, nor split it into
+  pieces or leave a hole in it, and a landmark that does is reported with the roads that cut it;
+  and a road whose centreline crossed the footprint before the cut (lane_cut's through: a road
+  into it, whose notch can be well under 2 %) is reported as passing through it.
+* The terrain for these is the one the level writes, cut under the bridge decks.
 * markings.json: every paint node inside the box.
+* bayous.json: every run has at least 2 nodes, each inside the box and with a width over 0.
+* dressing.json: no barrier vertex inside another road's corridor on its level (that road's surface
+  within dressing.SAME_LEVEL of the vertex), but for those within dressing.JOINT_REACH of a
+  straight joint where that barrier runs on onto the next deck's, in the corridor of a deck that
+  leaves it be there (dressing.joint_decks); and no pier footprint
+  (dressing.pier_footprint) on the corridor of another road running under its top (a deck over it,
+  or one at its own deck's level, stands on it too). A barrier's or a pier's own deck is the one
+  its "deck" id names.
 * The built level folder (<dist>/level/levels/<name>): every .dae shape's levels of
   detail at most 60,000 vertices.
 """
@@ -33,11 +57,15 @@ from PIL import Image, ImageDraw
 from shapely.geometry import LineString, Point, Polygon
 from shapely.strtree import STRtree
 
+from .bayous import load_bayous
 from .bridges import END_FRACTION, JOIN_TOL, MARGIN, TERRAIN_GAP, clear_under_decks, deck_crossings
-from .buildings import drop_conflicts, load_buildings, lowest_ground, wet_areas
+from .buildings import STYLED_FILE, drop_conflicts, load_buildings, lowest_ground, wet_areas
+from .dressing import JOINT_REACH, SAME_LEVEL, deck_id, joint_decks, load_dressing, pier_footprint, road_z
 from .geo import Extent
+from .landmarks import exempt, exempt_ways, ground_outline, ground_roads, load_landmarks, road_label
 from .markings import load_markings
 from .roads import load_roads
+from .styled import drawn_buildings
 from .terrain import sample_height
 from .trees import load_trees
 from .water import load_water
@@ -54,6 +82,7 @@ JOINT_DIP = 2.0     # m a joint may sit below both decks a tenth of their length
 CROSS_WARN = 1.0    # m decks crossing may come closer than clearance_m before it is a problem
 OVERLAP_EDGE = 0.5  # m of two decks' edges that may touch without counting as shared pavement
 SHRINK = 0.5        # m taken off a footprint before it is tested against the road corridors
+LANE_CUT_SHARE = 0.02  # of a landmark's footprint the roads beside it may cut away (landmarks.resolve) unremarked
 TREE_ROAD = 1.5     # m a tree keeps off a road corridor
 TREE_DECK = 3.0     # m a tree keeps off a bridge deck's corridor
 ON_TERRAIN = 1.0    # m a tree's z or a building's base may sit above or below the terrain
@@ -62,11 +91,6 @@ DAE_MAX_VERTS = 60000  # per level of detail of a shape (16-bit indices, with a 
 FOOTPRINT_COLOUR = (185, 185, 185)
 TREE_COLOUR = (30, 190, 60)
 OVERLAY_MAX_TREES = 200_000  # more trees in view are thinned to this many dots
-
-
-def _label(road) -> str:
-    ids = ",".join(str(i) for i in road.osm_ids)
-    return f"way {ids}" + (f" ({road.name})" if road.name else "")
 
 
 def landmark_errors(cfg) -> list[str]:
@@ -101,12 +125,12 @@ def check(cfg, out_dir=None) -> list[str]:
     for road in roads:
         xyz = road.nodes
         if np.isnan(xyz).any():
-            problems.append(f"{_label(road)}: NaN coordinates")
+            problems.append(f"{road_label(road)}: NaN coordinates")
             continue
         inside = extent.contains(xyz[:, 0], xyz[:, 1])
         if not inside.all():
             i = int(np.argmin(inside))
-            problems.append(f"{_label(road)}: node outside the box at ({xyz[i, 0]:.1f}, {xyz[i, 1]:.1f})")
+            problems.append(f"{road_label(road)}: node outside the box at ({xyz[i, 0]:.1f}, {xyz[i, 1]:.1f})")
         if road.is_bridge and len(xyz) > 2:
             d = np.r_[0.0, np.cumsum(np.hypot(*np.diff(xyz[:, :2], axis=0).T))]
             t = d / d[-1]
@@ -115,7 +139,7 @@ def check(cfg, out_dir=None) -> list[str]:
             gap = xyz[:, 2] - (ground + MARGIN)
             if mid.any() and gap[mid].min() < -CUT_WARN:
                 k = int(np.argmin(np.where(mid, gap, np.inf)))
-                problems.append(f"{_label(road)}: deck {xyz[k, 2] - ground[k]:.1f} m above the ground at "
+                problems.append(f"{road_label(road)}: deck {xyz[k, 2] - ground[k]:.1f} m above the ground at "
                                 f"{100 * t[k]:.0f} % of its length (needs {MARGIN} m), so the level "
                                 f"cuts the terrain {-gap[k] + TERRAIN_GAP - MARGIN:.1f} m deep there")
     problems += deck_problems([r for r in roads if r.is_bridge and not np.isnan(r.nodes).any()],
@@ -131,22 +155,32 @@ def level_root(cfg) -> Path:
 
 
 def feature_problems(cfg, out_dir: Path, extent: Extent, heights: np.ndarray, roads) -> list[str]:
-    """The checks on buildings, trees, paint and shapes, each run only when its input exists."""
+    """The checks on buildings, trees, landmarks, paint, bayous, deck dressing and shapes, each run
+    only when its input exists."""
     out_dir = Path(out_dir)
-    paths = {name: out_dir / f"{name}.json" for name in ("buildings", "trees", "markings")}
+    paths = {name: out_dir / f"{name}.json" for name in ("buildings", "trees", "landmarks", "markings", "bayous",
+                                                       "dressing")}
     buildings = load_buildings(paths["buildings"]) if paths["buildings"].exists() else []
+    buildings += drawn_buildings(out_dir / STYLED_FILE)
     trees = load_trees(paths["trees"]) if paths["trees"].exists() else []
+    landmarks = load_landmarks(paths["landmarks"]) if paths["landmarks"].exists() else []
     usable = [r for r in roads if len(r.nodes) >= 2 and np.isfinite(r.nodes).all()]
     problems: list[str] = []
-    if buildings or trees:
+    if buildings or trees or landmarks:
         terrain, _ = clear_under_decks(heights, extent, roads)  # what the level writes to the .ter
         if buildings:
             water = load_water(out_dir / "water.json") if (out_dir / "water.json").exists() else []
             problems += building_problems(buildings, usable, terrain, extent, water)
         if trees:
             problems += tree_problems(trees, buildings, usable, terrain, extent)
+        if landmarks:
+            problems += landmark_problems(landmarks, usable, terrain, extent, out_dir / "models")
     if paths["markings"].exists():
         problems += marking_problems(load_markings(paths["markings"]), extent)
+    if paths["bayous"].exists():
+        problems += bayou_problems(load_bayous(paths["bayous"]), extent)
+    if paths["dressing"].exists():
+        problems += dressing_problems(load_dressing(paths["dressing"]), usable)
     problems += dae_problems(level_root(cfg))
     return problems
 
@@ -202,7 +236,7 @@ def building_problems(buildings, roads, terrain: np.ndarray, extent: Extent, wat
             continue
         if i in on_road:
             c = polys[i].representative_point()
-            out.append(f"{name}: footprint on the corridor of {_label(roads[on_road[i]])} "
+            out.append(f"{name}: footprint on the corridor of {road_label(roads[on_road[i]])} "
                        f"near ({c.x:.0f}, {c.y:.0f})")
         dz = b.base_z - lowest[i]
         if "/t" in b.id and dz < 0:  # a tower part on its podium's base: buried in the podium
@@ -226,7 +260,7 @@ def tree_problems(trees, buildings, roads, terrain: np.ndarray, extent: Extent) 
                                (decks, TREE_DECK, f"within {TREE_DECK:g} m of the deck of")):
         if group:
             for t, g in _first_hits(points, corridors(group, extra)).items():
-                why.setdefault(t, f"{what} {_label(group[g])}")
+                why.setdefault(t, f"{what} {road_label(group[g])}")
     if buildings:
         for t, b in _first_hits(points, footprints(buildings)).items():
             why.setdefault(t, f"inside building {buildings[b].id}")
@@ -243,6 +277,89 @@ def tree_problems(trees, buildings, roads, terrain: np.ndarray, extent: Extent) 
     return out
 
 
+def _core(poly):
+    """poly shrunk SHRINK; poly itself when it is a sliver thinner than that."""
+    core = poly.buffer(-SHRINK)
+    return poly if core.is_empty else core
+
+
+def _hits(tree: STRtree, geom) -> set[int]:
+    """The items of tree that intersect geom (none for an empty one)."""
+    return set(tree.query(geom, predicate="intersects").tolist()) if not geom.is_empty else set()
+
+
+def _lane_cut_problem(name: str, cut: dict) -> list[str]:
+    """The one line for a landmark whose lane_cut (landmarks.json, from landmarks.resolve) took more than
+    LANE_CUT_SHARE of its footprint, split it or left a hole in it, naming the roads that cut it; [] when
+    it did none of these."""
+    why = []
+    if cut["share"] > LANE_CUT_SHARE:
+        why.append(f"removed {100 * cut['share']:.1f} % of its footprint ({cut['m2']:.0f} m2)")
+    if cut["pieces"] > 1:
+        why.append(f"split it into {cut['pieces']} pieces")
+    if cut["holes"]:
+        why.append(f"left {cut['holes']} hole{'s' if cut['holes'] > 1 else ''} in it")
+    if not why:
+        return []
+    said = ", ".join(why[:-1]) + (" and " if len(why) > 1 else "") + why[-1]
+    roads = ", ".join(f"{r['road']} {r['m2']:.1f} m2" for r in cut["roads"])
+    return [f"{name}: the lane cut {said}" + (f", by {roads}" if roads else "")]
+
+
+def landmark_problems(landmarks, roads, heights: np.ndarray, extent: Extent, models_dir=None) -> list[str]:
+    """Drivable ground roads (landmarks.ground_roads: drivability > 0, not a bridge deck) whose
+    centreline crosses a landmark's footprint shrunk 0.5 m (not for a landmark over bridge decks,
+    params.decks: its footprint is in the air) or crossed it before the lane cut (the roads its
+    lane_cut's through names; an older landmarks.json has none), or (given models_dir, the models
+    stage's out/models) what its model stands on (landmarks.ground_outline) shrunk 0.5 m; those
+    whose corridor grown to width / 2 - SHRINK (building_problems' rule) reaches into the footprint
+    or what the model stands on (not for the roads the landmark's params.keep_off_roads exempts,
+    landmarks.exempt_ways); a landmark whose lane_cut (landmarks.resolve: the cut of the footprint
+    by the lanes beside it, so the roads it names are not the exempt ones) took more than
+    LANE_CUT_SHARE of its footprint, split it into pieces or left a hole in it (an older
+    landmarks.json has no lane_cut); and landmark bases over 1 m above the lowest terrain along the
+    footprint's outline. In landmark order, one line per landmark and road (a road that passes
+    through the footprint is named for that alone), and one for the lane cut."""
+    drivable = ground_roads(roads)
+    lines = STRtree([LineString(r.nodes[:, :2]) for r in drivable]) if drivable else None
+    lanes = STRtree(corridors(drivable, -SHRINK)) if drivable else None
+    rings = [np.asarray(lm["footprint"], float).reshape(-1, 2) for lm in landmarks]
+    lowest = lowest_ground([(ring, []) for ring in rings], heights, extent)
+    out = []
+    for lm, ring, low in zip(landmarks, rings, lowest):
+        params = lm.get("params") or {}
+        aloft, ways = bool(params.get("decks")), exempt_ways(lm["name"], params)
+        foot = Polygon(ring) if len(ring) >= 3 and not aloft else Polygon()
+        outline = ground_outline(lm, models_dir) if models_dir is not None else Polygon()
+        where = "what its model stands on" if aloft else "its model's ground outline, past the footprint"
+        # the roads across the footprint as it is, then those resolve found across it before the lane cut
+        # (lane_cut's through; an older landmarks.json has none), each once
+        here = sorted(_hits(lines, _core(foot))) if lines is not None else []
+        crossing = list(dict.fromkeys([road_label(drivable[j]) for j in here] +
+                                      list((lm.get("lane_cut") or {}).get("through") or [])))
+        out += [f"{lm['name']}: road {label} passes through it" for label in crossing]
+        if lines is not None:
+            said = set(crossing)                 # a road that passes through it is not named again below
+            under = {j for j in _hits(lines, _core(outline)) if road_label(drivable[j]) not in said}
+            into = {j for j in _hits(lanes, foot)
+                    if not exempt(drivable[j], ways) and road_label(drivable[j]) not in said} - under
+            past = {j for j in _hits(lanes, outline)
+                    if not exempt(drivable[j], ways) and road_label(drivable[j]) not in said} - under - into
+            for j in sorted(under):
+                out.append(f"{lm['name']}: road {road_label(drivable[j])} passes through {where}")
+            for js, geom, what in ((into, foot, "it"), (past, outline, where)):
+                for j in sorted(js):
+                    c = geom.intersection(lanes.geometries[j]).representative_point()
+                    out.append(f"{lm['name']}: the corridor of road {road_label(drivable[j])} reaches into {what} "
+                               f"near ({c.x:.0f}, {c.y:.0f})")
+        if lm.get("lane_cut"):    # an older landmarks.json has none
+            out += _lane_cut_problem(lm["name"], lm["lane_cut"])
+        dz = lm["base_z"] - low
+        if dz > ON_TERRAIN:
+            out.append(f"{lm['name']}: base floats {dz:.1f} m")
+    return out
+
+
 def marking_problems(marks, extent: Extent) -> list[str]:
     """Paint with a node outside the box (or a NaN one)."""
     out = []
@@ -252,6 +369,68 @@ def marking_problems(marks, extent: Extent) -> list[str]:
         if not inside.all():
             i = int(np.argmin(inside))
             out.append(f"marking {m.name}: node outside the box at ({xyz[i, 0]:.1f}, {xyz[i, 1]:.1f})")
+    return out
+
+
+def bayou_problems(bayous: dict, extent: Extent) -> list[str]:
+    """Bayou runs (bayous.json) with a node outside the box (or a NaN one), a width of 0 or less, or
+    fewer than 2 nodes, in run order."""
+    out = []
+    for r in bayous["runs"]:
+        name = f"bayou {r['id']}" + (f" ({r['name']})" if r.get("name") else "")
+        nodes = np.asarray(r["nodes"], float).reshape(-1, 4)
+        if len(nodes) < 2:
+            out.append(f"{name}: {len(nodes)} node{'' if len(nodes) == 1 else 's'}, a run needs 2")
+        inside = extent.contains(nodes[:, 0], nodes[:, 1])
+        if not inside.all():
+            i = int(np.argmin(inside))
+            out.append(f"{name}: node outside the box at ({nodes[i, 0]:.1f}, {nodes[i, 1]:.1f})")
+        flat = ~(nodes[:, 3] > 0)
+        if flat.any():
+            i = int(np.argmax(flat))
+            out.append(f"{name}: width {nodes[i, 3]:g} m at ({nodes[i, 0]:.1f}, {nodes[i, 1]:.1f})")
+    return out
+
+
+def dressing_problems(dressing: dict, roads) -> list[str]:
+    """Barriers (dressing.json) with vertices inside another road's corridor on their level (but
+    near a straight joint, as the module docstring says), and piers on the corridor of another road
+    running under their top, in file order: one line per barrier or pier and road."""
+    usable = [r for r in roads if len(r.nodes) >= 2 and np.isfinite(r.nodes).all()]
+    if not usable:
+        return []
+    ids = [deck_id(r) for r in usable]
+    lines = [LineString(r.nodes[:, :2]) for r in usable]
+    tree = STRtree(corridors(usable))
+    decks = [r for r in usable if r.is_bridge]
+    run_on: dict[tuple[str, str], list] = {}         # (deck id, side) -> [(deck id, straight joint (x, y))]
+    for i, at in joint_decks(decks).items():
+        for k, p, sides in at:
+            for side in sides:
+                run_on.setdefault((deck_id(decks[i]), side), []).append((deck_id(decks[k]), p))
+    out = []
+    for bar in dressing["barriers"]:
+        pts = np.asarray(bar["points"], float).reshape(-1, 3)
+        point, road = tree.query(shapely.points(pts[:, :2]), predicate="within")
+        for j in sorted(set(road.tolist())):
+            if ids[j] == bar["deck"]:
+                continue
+            here = point[road == j]
+            for other, p in run_on.get((bar["deck"], bar["side"]), []):
+                if other == ids[j]:                  # the barrier runs on across a straight joint
+                    here = here[np.hypot(*(pts[here, :2] - p).T) > JOINT_REACH]
+            if not len(here):
+                continue
+            on = here[np.abs(pts[here, 2] - road_z(usable[j], lines[j], pts[here, :2])) < SAME_LEVEL]
+            if len(on):
+                x, y, _ = pts[on[0]]
+                out.append(f"barrier {bar['side']} of deck {bar['deck']}: {len(on)} vertices inside the corridor "
+                           f"of {ids[j]} ({road_label(usable[j])}) on its level, the first at ({x:.0f}, {y:.0f})")
+    for pier in dressing["piers"]:
+        for j in sorted(int(j) for j in tree.query(pier_footprint(pier), predicate="intersects")):
+            if ids[j] != pier["deck"] and road_z(usable[j], lines[j], [(pier["x"], pier["y"])])[0] < pier["z_top"]:
+                out.append(f"pier of deck {pier['deck']} at ({pier['x']:.0f}, {pier['y']:.0f}) stands on the "
+                           f"corridor of {ids[j]} ({road_label(usable[j])})")
     return out
 
 
@@ -345,12 +524,12 @@ def deck_problems(decks, clearance: float) -> list[str]:
                 zi, zj = float(r.nodes[end, 2]), z_at(j, sj)
                 where = f"({p.x:.0f}, {p.y:.0f})"
                 if abs(zi - zj) > JOINT_STEP:
-                    out.append(f"{_label(r)} ends {abs(zi - zj):.1f} m {'above' if zi > zj else 'below'} "
-                               f"{_label(decks[j])} where it joins it at {where}")
+                    out.append(f"{road_label(r)} ends {abs(zi - zj):.1f} m {'above' if zi > zj else 'below'} "
+                               f"{road_label(decks[j])} where it joins it at {where}")
                 elif min(sj, arcs[j][-1] - sj) < JOIN_TOL:
                     dip = min(inward(i, arcs[i][-1] if end else 0.0), inward(j, sj)) - max(zi, zj)
                     if dip > JOINT_DIP:
-                        out.append(f"{_label(r)} and {_label(decks[j])} dip {dip:.1f} m to their "
+                        out.append(f"{road_label(r)} and {road_label(decks[j])} dip {dip:.1f} m to their "
                                    f"joint at {where}")
     flagged = set()
     for i in range(len(decks)):
@@ -362,7 +541,7 @@ def deck_problems(decks, clearance: float) -> list[str]:
                 if dz < clearance - CROSS_WARN and (i, j) not in flagged:
                     flagged.add((i, j))
                     p = lines[i].interpolate(si)
-                    out.append(f"{_label(decks[i])} and {_label(decks[j])} cross only {dz:.1f} m "
+                    out.append(f"{road_label(decks[i])} and {road_label(decks[j])} cross only {dz:.1f} m "
                                f"apart at ({p.x:.0f}, {p.y:.0f}) (needs {clearance} m)")
     # where one deck's centerline runs on another's pavement (a ramp leaving it) the two
     # have to be level, or a car following it meets the other deck's edge
@@ -384,7 +563,7 @@ def deck_problems(decks, clearance: float) -> list[str]:
             if worst:
                 flagged.add(pair)
                 dz, x, y = worst
-                out.append(f"{_label(r)} and {_label(decks[j])} overlap with a {abs(dz):.1f} m step "
+                out.append(f"{road_label(r)} and {road_label(decks[j])} overlap with a {abs(dz):.1f} m step "
                            f"at ({x:.0f}, {y:.0f})")
     return out
 
@@ -413,6 +592,7 @@ def overlay_features(out_dir) -> dict:
     rings, trees = [], np.empty((0, 2))
     if (out_dir / "buildings.json").exists():
         rings = [b.ring for b in load_buildings(out_dir / "buildings.json") if len(b.ring) >= 3]
+    rings += [b.ring for b in drawn_buildings(out_dir / STYLED_FILE) if len(b.ring) >= 3]
     bounds = np.array([(r[:, 0].min(), r[:, 1].min(), r[:, 0].max(), r[:, 1].max()) for r in rings],
                       float).reshape(-1, 4)
     if (out_dir / "trees.json").exists():

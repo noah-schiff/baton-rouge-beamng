@@ -1,4 +1,5 @@
-"""Stage 7: assemble the BeamNG level folder from the stage outputs, and zip it as a mod.
+"""Stage 7: assemble the BeamNG level folder from the stage outputs, write the level's licence plate
+design beside it, and zip both as a mod.
 
 Feature stages plug in through FEATURE_MODULES: for each name whose out/<name>.json
 exists, brmap.<name>.level_content(cfg, data_dir, root, heights, extent) writes that
@@ -37,15 +38,18 @@ DATA_DIR = Path("data/out")
 DIST_DIR = Path("dist")
 # Microsoft's footprints (ODbL) supply most of the buildings
 CREDITS = ("Map data © OpenStreetMap contributors (ODbL). Building footprints © Microsoft (ODbL). "
-           "Elevation and surface: USGS 3DEP. Imagery: USDA NAIP. Land cover: MRLC NLCD.")
+           "Elevation and surface: USGS 3DEP. Imagery: USDA NAIP. Land cover: MRLC NLCD. "
+           "Textures: ambientCG and Poly Haven (CC0).")
 DESCRIPTION = ("Baton Rouge, Louisiana at 1:1 scale, built from public map data: real roads on "
                "real lidar terrain, the Mississippi River and its bridges, downtown, the State "
-               "Capitol and LSU with its lakes.")
+               "Capitol and LSU with its lakes. Its landmarks are modelled, from Tiger Stadium and the "
+               "Memorial Tower to both State Capitols and the Horace Wilkinson Bridge's truss, and its "
+               "swamps and bayous grow bald cypress and water tupelo hung with Spanish moss.")
 WATER_STRIP = 512.0   # m; long water bodies are split into blocks this long so they follow bends
 WATER_MARGIN = 8.0    # m added around each block to cover the shoreline cells
 DECK_SNAP = 25.0      # m; a spawn this close to a bridge deck's centerline is placed on it
                       # (25 m reaches either carriageway from a point between the two)
-FEATURE_MODULES = ("buildings", "trees", "markings")
+FEATURE_MODULES = ("buildings", "styled", "trees", "markings", "landmarks", "bayous", "dressing")
 
 
 def _write_json(path: Path, data, indent=1) -> None:
@@ -173,7 +177,8 @@ def feature_groups(cfg, data_dir: Path, root: Path, heights: np.ndarray, extent:
 
 
 def write_level(cfg, out_dir=DIST_DIR / "level", data_dir=DATA_DIR) -> Path:
-    """Write levels/<name>/ under out_dir and return that folder."""
+    """Write levels/<name>/ and the plate design's bf.PLATES_DIR/<name>/ under out_dir and return the
+    level folder."""
     extent = Extent.from_config(cfg)
     out_dir, data_dir = Path(out_dir), Path(data_dir)
     name = cfg.level_name
@@ -242,13 +247,19 @@ def write_level(cfg, out_dir=DIST_DIR / "level", data_dir=DATA_DIR) -> Path:
                 for o in members]
         _write_lines(mission / "MissionGroup" / g / "items.level.json", objs)
 
-    used, stale = meshcache.apply(root, data_dir / "cdae")  # the game's compiled meshes, where still valid
+    # the game's compiled meshes and imposters, where still valid; after the feature modules wrote every
+    # *.materials.json, asset.json and texture, which the imposters' fingerprints read (it logs their counts)
+    used, stale = meshcache.apply(root, data_dir / "cdae")
     if used or stale:
         log.info("compiled meshes: %d shipped, %d left for the game to compile (tools/ingame/collect_meshes.py)",
                  used, len(stale))
     preview = f"{name}_preview.jpg"
     _write_json(root / "info.json", _info(cfg, extent.half_size, spawns, preview), indent=2)
     _preview(basecolor, extent, spawns, root / preview)
+    plates = out_dir / bf.PLATES_DIR / name
+    if plates.exists():
+        shutil.rmtree(plates)
+    _write_json(plates / bf.PLATE_FILE, bf.plate_design(name), indent=2)
     log.info("level %s: %d decal roads, %d bridge decks (%d AI connectors), %d water blocks, %d spawns",
              name, len(groups["roads"]), len(groups["bridges"]), len(groups["connectors"]),
              len(groups["water"]), len(spawns))
@@ -256,20 +267,24 @@ def write_level(cfg, out_dir=DIST_DIR / "level", data_dir=DATA_DIR) -> Path:
 
 
 def zip_mod(stage_dir, zip_path, level_name: str) -> Path:
-    """Zip stage_dir/levels/<level_name>/ with levels/ at the zip root.
+    """Zip stage_dir/levels/<level_name>/ and its plate design, stage_dir/<bf.PLATES_DIR>/<level_name>/,
+    at the same paths from the zip root.
 
-    Only that level goes in, so a folder left in the stage by a build under another
-    level name never ships with it.
+    Only those two folders go in, so a folder left in the stage by a build under another
+    level name never ships with it. PNG and JPEG are stored (deflate gains nothing on
+    them); everything else is deflated, DDS included, because block-compressed textures
+    deflate well (flat areas and repeated blocks).
     """
     stage_dir, zip_path = Path(stage_dir), Path(zip_path)
     zip_path.parent.mkdir(parents=True, exist_ok=True)
     part = zip_path.with_name(zip_path.name + ".part")
     with zipfile.ZipFile(part, "w") as z:
-        for f in sorted((stage_dir / "levels" / level_name).rglob("*")):
-            if f.is_file():
-                packed = f.suffix.lower() in (".png", ".jpg", ".dds")
-                z.write(f, f.relative_to(stage_dir).as_posix(),
-                        compress_type=zipfile.ZIP_STORED if packed else zipfile.ZIP_DEFLATED)
+        for tree in (Path("levels") / level_name, Path(bf.PLATES_DIR) / level_name):
+            for f in sorted((stage_dir / tree).rglob("*")):
+                if f.is_file():
+                    packed = f.suffix.lower() in (".png", ".jpg")
+                    z.write(f, f.relative_to(stage_dir).as_posix(),
+                            compress_type=zipfile.ZIP_STORED if packed else zipfile.ZIP_DEFLATED)
     part.replace(zip_path)
     return zip_path
 

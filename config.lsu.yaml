@@ -1,0 +1,46 @@
+# Small 3 km test map around LSU, for quick in-game checks of the landmarks.
+# Same downloads as config.yaml; separate outputs and level name, so all three maps can
+# sit in the BeamNG mods folder at once. Run: python -m brmap all --config config.lsu.yaml
+
+extent:
+  center_lat: 30.41228
+  center_lon: -91.18323
+  half_size_m: 8192
+  buffer_m: 500
+  debug_half_size_m: 1500   # 3 km square
+
+terrain:
+  size: 1024                # 2.9 m per cell over 3 km
+  z_min: -15.0
+  z_max: 40.0
+
+bridges:
+  clearance_m: 5.5
+  overrides:
+    Horace Wilkinson Bridge: 52.0
+
+buildings:
+  microsoft: true
+  tile_m: 256
+
+trees:
+  max_count: 20000
+
+markings:
+  enabled: true
+
+traffic:
+  enabled: true
+
+level:
+  name: baton_rouge_lsu
+  title: Baton Rouge 1:1 (LSU test)
+  authors: Noah Schiff
+
+spawns:
+  - {name: spawn_lsu, title: "LSU, Tiger Stadium lot", lat: 30.4115, lon: -91.1855}
+
+paths:
+  raw: data/raw
+  out: data/out_lsu
+  dist: dist/lsu

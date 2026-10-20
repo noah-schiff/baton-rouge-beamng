@@ -1,0 +1,339 @@
+# Materials the landmark models bind (the Blender material names) and the styled buildings bind
+# (styled.yaml), resolved by brmap.materials.resolve into the level's
+# art/shapes/landmarks/main.materials.json and art/shapes/styled/main.materials.json (one
+# definition per level: materials.write_materials). Each entry:
+#
+#   br_<name>:
+#     maps: {b|nm|r|o|ao: "stock:<path>" | "tex:<tex_id>"}
+#     factors: {...}   # go into the stage as they are (baseColorFactor, roughnessFactor, ...)
+#     flags: {...}     # go to the top level (alphaTest, alphaRef, doubleSided, groundType, ...)
+#
+# stock: paths are textures the game ships, named .png (the game loads the .dds it ships under
+# that name). tex: ids are this repo's own textures (out/textures/index.json), shipped as DDS only,
+# copied into the level's art/textures/br/ and referenced the same way, by the .png name of that
+# file (<id>_<suffix>.png for <id>_<suffix>.dds; BeamNG.drive 0.40's NOTE_FOR_MODDERS.md).
+
+# The stock garage's m_stucco_white maps (art/shapes/garage_and_dealership/garage/main.materials.json
+# names them through .png.link files; these are the paths the links point to, in
+# content/assets/materials/tileable.zip, 0.39.4), tinted tan.
+br_lm_stucco_tan:
+  maps:
+    b: stock:/assets/materials/tileable/plaster/m_stucco_white/t_stucco_white_b.color.png
+    nm: stock:/assets/materials/tileable/plaster/m_stucco_white/t_stucco_white_nm.normal.png
+    r: stock:/assets/materials/tileable/plaster/m_stucco_white/t_stucco_white_r.data.png
+  factors:
+    baseColorFactor: [0.86, 0.76, 0.60, 1]
+  flags:
+    annotation: BUILDINGS
+    groundType: CONCRETE
+
+# Clay roof tiles: the stock Italian roof tiles (content/assets/materials/tileable.zip, 0.39.4 and
+# 0.40.0.0; no ao map), which looked right in game on the Memorial Tower. Task 13 had switched to the
+# CC0 ambientCG RoofingTiles012A set (tex:roof_barrel), but that texture covers about 2.9 m, so at the
+# models' 1 m-per-repeat roof UVs each barrel tile drew about 7.7 cm wide; Task 17b went back.
+# roof_barrel stays in src/brmap/data/textures.yaml for later use (not fetched while unbound).
+br_lm_roof_tile:
+  maps:
+    b: stock:/assets/materials/tileable/roofing/t_italy_bld_roof_tiles/t_italy_bld_roof_tiles_b.color.png
+    nm: stock:/assets/materials/tileable/roofing/t_italy_bld_roof_tiles/t_italy_bld_roof_tiles_nm.normal.png
+    r: stock:/assets/materials/tileable/roofing/t_italy_bld_roof_tiles/t_italy_bld_roof_tiles_r.data.png
+  flags:
+    annotation: BUILDINGS
+    groundType: CONCRETE
+
+# Cast-stone trim: the stock marble slabs' colour and roughness (tileable.zip, 0.39.4) with the
+# repo's bevel normal map, so the plinth and string courses read as blocks.
+br_lm_trim_stone:
+  maps:
+    b: stock:/assets/materials/tileable/marble/slabs_marble/t_slabs_marble_b.color.png
+    r: stock:/assets/materials/tileable/marble/slabs_marble/t_slabs_marble_r.data.png
+    nm: tex:bevel
+  flags:
+    annotation: BUILDINGS
+    groundType: CONCRETE
+
+# The clock dial (texgen.clock_face), which the Memorial Tower binds on all four faces: opaque
+# (a stone square round the dial), so alphaTest stays off.
+br_lm_clock:
+  maps:
+    b: tex:clock_face
+  flags:
+    alphaTest: false
+    annotation: BUILDINGS
+
+# --- Tiger Stadium (blender/landmarks/tiger_stadium.py) ---
+
+# The facade, the concourses and the stands' structure: the stock plain concrete the buildings use
+# (concrete/concrete_plain, tileable.zip, 0.39.4), tinted tan. vertColor darkens the blind arches' backs.
+br_lm_concrete_tan:
+  maps:
+    b: stock:/assets/materials/tileable/concrete/concrete_plain/t_concrete_plain_b.color.png
+    nm: stock:/assets/materials/tileable/concrete/concrete_plain/t_concrete_plain_nm.normal.png
+    r: stock:/assets/materials/tileable/concrete/concrete_plain/t_concrete_plain_r.data.png
+    ao: stock:/assets/materials/tileable/concrete/concrete_plain/t_concrete_plain_ao.data.png
+  factors:
+    baseColorFactor: [0.86, 0.78, 0.64, 1]
+  flags:
+    vertColor: true
+    annotation: BUILDINGS
+    groundType: CONCRETE
+
+# The seats: no map, the colour is the vertex colour (purple and gold sections, darker risers).
+br_lm_seats:
+  factors:
+    baseColorFactor: [1, 1, 1, 1]
+    roughnessFactor: 0.55
+  flags:
+    vertColor: true
+    annotation: BUILDINGS
+    groundType: CONCRETE
+
+# The field's turf: the CC0 ambientCG Grass005 set (tex:turf); vertColor mows the stripes.
+br_lm_turf:
+  maps:
+    b: tex:turf
+    nm: tex:turf
+    r: tex:turf
+  flags:
+    vertColor: true
+    annotation: NATURE
+    groundType: GRASS
+
+# The field's white paint (yard lines, hash marks, the border): no map.
+br_lm_field_paint:
+  factors:
+    baseColorFactor: [0.95, 0.95, 0.93, 1]
+    roughnessFactor: 0.8
+  flags:
+    annotation: NATURE
+    groundType: GRASS
+
+# The field's decals from the generated atlas (logos.field_atlas: the end zones, numerals, arrows and
+# the tiger), cut out by its alpha.
+br_lm_field_marks:
+  maps:
+    b: tex:field_atlas
+  flags:
+    alphaTest: true
+    alphaRef: 127
+    annotation: NATURE
+    groundType: GRASS
+
+# The scoreboard's face (logos.board): opaque.
+br_lm_board:
+  maps:
+    b: tex:board
+  flags:
+    alphaTest: false
+    annotation: BUILDINGS
+
+# Light towers and the board's box: grey painted steel, no map.
+br_lm_steel:
+  factors:
+    baseColorFactor: [0.55, 0.57, 0.60, 1]
+    metallicFactor: 0.5
+    roughnessFactor: 0.5
+  flags:
+    annotation: BUILDINGS
+    groundType: CONCRETE
+
+# The floodlights' lamp faces: warm white, no map.
+br_lm_lamp:
+  factors:
+    baseColorFactor: [1, 0.97, 0.88, 1]
+    roughnessFactor: 0.3
+  flags:
+    annotation: BUILDINGS
+
+# --- PMAC, Alex Box Stadium, Mike the Tiger's habitat (blender/landmarks/pmac.py, alex_box.py,
+# mike_habitat.py) ---
+
+# The PMAC's dome, ring and annex, the ballpark's stands and walls, the habitat's curb: the stock
+# plain concrete (concrete/concrete_plain, tileable.zip, 0.39.4), untinted. vertColor darkens the
+# window and door bands and paints the ballpark's fascia.
+br_lm_concrete:
+  maps:
+    b: stock:/assets/materials/tileable/concrete/concrete_plain/t_concrete_plain_b.color.png
+    nm: stock:/assets/materials/tileable/concrete/concrete_plain/t_concrete_plain_nm.normal.png
+    r: stock:/assets/materials/tileable/concrete/concrete_plain/t_concrete_plain_r.data.png
+    ao: stock:/assets/materials/tileable/concrete/concrete_plain/t_concrete_plain_ao.data.png
+  flags:
+    vertColor: true
+    annotation: BUILDINGS
+    groundType: CONCRETE
+
+# The ballpark's infield: the stock crumbly dirt (terrain/soil/dirt_crumbly, terrain.zip, 0.39.4),
+# tinted orange like clay.
+br_lm_clay:
+  maps:
+    b: stock:/assets/materials/terrain/soil/dirt_crumbly/t_dirt_crumbly_b.color.png
+    nm: stock:/assets/materials/terrain/soil/dirt_crumbly/t_dirt_crumbly_nm.normal.png
+    r: stock:/assets/materials/terrain/soil/dirt_crumbly/t_dirt_crumbly_r.data.png
+    ao: stock:/assets/materials/terrain/soil/dirt_crumbly/t_dirt_crumbly_ao.data.png
+  factors:
+    baseColorFactor: [0.95, 0.58, 0.36, 1]
+  flags:
+    annotation: NATURE
+    groundType: DIRT
+
+# Painted trim with no map, its colour the vertex colour: the outfield wall's green and gold, the
+# foul poles, the bleachers' rails.
+br_lm_paint:
+  factors:
+    baseColorFactor: [1, 1, 1, 1]
+    roughnessFactor: 0.6
+  flags:
+    vertColor: true
+    annotation: BUILDINGS
+    groundType: CONCRETE
+
+# The habitat's rock work: the stock rock wall (stone/rockwall, tileable.zip, 0.39.4).
+br_lm_rock:
+  maps:
+    b: stock:/assets/materials/tileable/stone/rockwall/t_rock_wall_b.color.png
+    nm: stock:/assets/materials/tileable/stone/rockwall/t_rock_wall_nm.normal.png
+    r: stock:/assets/materials/tileable/stone/rockwall/t_rock_wall_r.data.png
+    ao: stock:/assets/materials/tileable/stone/rockwall/t_rock_wall_ao.data.png
+  flags:
+    annotation: NATURE
+    groundType: ROCK
+
+# The habitat's pool, stream and falls: dark green water, glossy, no map.
+br_lm_water:
+  factors:
+    baseColorFactor: [0.10, 0.17, 0.15, 1]
+    roughnessFactor: 0.05
+  flags:
+    annotation: NATURE
+
+# The habitat's viewing glass: see-through (translucent, opacityFactor), both sides, no map.
+br_lm_glass:
+  factors:
+    baseColorFactor: [0.55, 0.66, 0.68, 1]
+    opacityFactor: 0.3
+    roughnessFactor: 0.05
+  flags:
+    translucent: true
+    doubleSided: true
+    annotation: BUILDINGS
+
+# --- The State Capitol and the Old State Capitol (blender/landmarks/capitol.py, old_capitol.py) ---
+
+# The Capitol's limestone: the stock marble slabs (tileable.zip, 0.40.0.0; no joints, pale veining),
+# tinted the pale buff of its Alabama limestone. vertColor darkens the window bands (glass and
+# spandrels). The CC0 tex:limestone (ambientCG Tiles143) would tile right (six 0.6 m blocks in the
+# models' 3.6 m repeat) but is a saturated peach travertine (mean sRGB 217, 180, 141) that reads brown
+# in the preview (docs/screenshots/v02/capitol_stone_blender.jpg), and a baseColorFactor (at most 1)
+# can't pull it to buff; it stays in textures.yaml (not fetched while unbound).
+br_lm_limestone:
+  maps:
+    b: stock:/assets/materials/tileable/marble/slabs_marble/t_slabs_marble_b.color.png
+    nm: stock:/assets/materials/tileable/marble/slabs_marble/t_slabs_marble_nm.normal.png
+    r: stock:/assets/materials/tileable/marble/slabs_marble/t_slabs_marble_r.data.png
+  factors:
+    baseColorFactor: [0.93, 0.89, 0.79, 1]
+  flags:
+    vertColor: true
+    annotation: BUILDINGS
+    groundType: CONCRETE
+
+# The Old State Capitol's white walls: the stock stucco1_white (plaster/stucco1_white, tileable.zip,
+# 0.40.0.0).
+br_lm_stucco_white:
+  maps:
+    b: stock:/assets/materials/tileable/plaster/stucco1_white/t_stucco1_white_b.color.png
+    nm: stock:/assets/materials/tileable/plaster/stucco1_white/t_stucco1_white_nm.normal.png
+    r: stock:/assets/materials/tileable/plaster/stucco1_white/t_stucco1_white_r.data.png
+    ao: stock:/assets/materials/tileable/plaster/stucco1_white/t_stucco1_white_ao.data.png
+  flags:
+    annotation: BUILDINGS
+    groundType: CONCRETE
+
+# Its pointed-arch windows (texgen.gothic_window), decal quads on the walls, cut out round the arch by
+# its alpha.
+br_lm_gothic_window:
+  maps:
+    b: tex:gothic_window
+  flags:
+    alphaTest: true
+    alphaRef: 127
+    annotation: BUILDINGS
+
+# --- The Horace Wilkinson Bridge's truss (blender/landmarks/wilkinson_truss.py) ---
+
+# Its painted steel: the stock metal_paint (metal/metal_paint, tileable.zip, 0.40.0.0; an off-white
+# paint, mean sRGB 226, 219, 217, so the factor sets the colour), tinted grey-green. Not br_lm_steel:
+# that is the plain grey (no maps) of the stadium's light towers, the PMAC's posts, the Old State
+# Capitol's roofs and the downtown copings, and repainting it would change them all.
+br_lm_truss_steel:
+  maps:
+    b: stock:/assets/materials/tileable/metal/metal_paint/t_metal_paint_b.color.png
+    nm: stock:/assets/materials/tileable/metal/metal_paint/t_metal_paint_nm.normal.png
+    r: stock:/assets/materials/tileable/metal/metal_paint/t_metal_paint_r.data.png
+  factors:
+    baseColorFactor: [0.53, 0.60, 0.55, 1]
+    metallicFactor: 0.3
+  flags:
+    annotation: BUILDINGS
+    groundType: METAL
+
+# --- Styled buildings (src/brmap/styled.py, styled.yaml) ---
+
+# The LSU campus core's walls: the generated tex:lsu_wall (texgen.lsu_wall), one 3 m bay of one 3.6 m
+# floor per repeat: tan stucco with an arched window in a cast-stone surround. Their roofs bind
+# br_lm_roof_tile and their cornices br_lm_trim_stone (above).
+br_sty_lsu_wall:
+  maps:
+    b: tex:lsu_wall
+    nm: tex:lsu_wall
+    r: tex:lsu_wall
+  flags:
+    annotation: BUILDINGS
+    groundType: CONCRETE
+
+# The downtown standouts' walls: the generated tex:facade_<style> (texgen.facade: 4 floors and a run of
+# bays per repeat), colour and roughness; the glass styles reflect (metallicFactor, texgen.FACADES' m).
+# Their flat roofs bind br_lm_concrete, their copings br_lm_concrete, br_lm_steel or br_lm_trim_stone.
+br_sty_ribbon_dark:
+  maps:
+    b: tex:facade_ribbon_dark
+    r: tex:facade_ribbon_dark
+  factors:
+    metallicFactor: 0.3
+  flags:
+    annotation: BUILDINGS
+    groundType: CONCRETE
+
+br_sty_precast_punched:
+  maps:
+    b: tex:facade_precast_punched
+    r: tex:facade_precast_punched
+  flags:
+    annotation: BUILDINGS
+    groundType: CONCRETE
+
+br_sty_brick_hotel:
+  maps:
+    b: tex:facade_brick_hotel
+    r: tex:facade_brick_hotel
+  flags:
+    annotation: BUILDINGS
+    groundType: CONCRETE
+
+br_sty_precast_arena:
+  maps:
+    b: tex:facade_precast_arena
+    r: tex:facade_precast_arena
+  flags:
+    annotation: BUILDINGS
+    groundType: CONCRETE
+
+br_sty_glass_blue:
+  maps:
+    b: tex:facade_glass_blue
+    r: tex:facade_glass_blue
+  factors:
+    metallicFactor: 0.5
+  flags:
+    annotation: BUILDINGS
+    groundType: CONCRETE

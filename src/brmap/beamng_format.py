@@ -21,6 +21,9 @@ gridmap_v2, west_coast_usa, east_coast_usa, italy, johnson_valley, Utah):
   and lanesRight set the lanes (lanesRight runs with the node order) and
   speedLimit is a string in m/s. info.json roadRules is merged over
   {rightHandDrive: false, turnOnRed: false}.
+* A level's licence plate design lives outside its folder, in
+  vehicles/common/licenseplates/<level>/ (the stock levels' are in content/vehicles/common.zip);
+  0.40 warns when a level has none (plate_design).
 
 Checked in game (0.39.4, tools/ingame): the .ter rows run south to north
 (surface heights matched the grid to 1 mm, a mirrored grid was 2.4 m off); the
@@ -381,3 +384,40 @@ def env_objects(level: str) -> list[dict]:
         name, cls = o.pop("name"), o.pop("class")
         out.append({"name": name, "class": cls, "persistentId": persistent_id("env", level, name), **o})
     return out
+
+
+# A level's licence plate design: lua/ge/extensions/core/vehicles.lua (setPlateText, 0.40) looks for
+# PLATES_DIR/<level>/PLATE_FILE when a vehicle names no design of its own, and logs a warning when the
+# level has none before it falls back to PLATES_DIR/default/PLATE_FILE.
+PLATES_DIR = "vehicles/common/licenseplates"
+PLATE_FILE = "licensePlate-default.sktemplate.json"
+# the stock default design's own plain 30-15 background (the default folder's licenseplate-default_d.png is
+# a state's plate, Utah's) ...
+PLATE_BACKGROUND = "#ffffff"
+# ... and the default folder's normal map, the plate's embossed rim, which the stock US designs share
+PLATE_NORMAL = f"{PLATES_DIR}/default/licenseplate-default_n.png"
+
+
+def plate_design(level: str) -> dict:
+    """The level's plate design (sktemplate version 3): one US 30-15 format on the stock default plate's
+    background and normal map, lettered as the stock east_coast_usa design, reading three digits and three
+    letters as Louisiana's plates do, with no state's graphics. A vehicle on a wide 52-11 plate gets the
+    game's default design for that format."""
+    return {
+        "format": {"30-15": {
+            "background": PLATE_BACKGROUND, "emboss": 3, "normal": PLATE_NORMAL,
+            "root": {"children": [{"color": "#050505", "fit": "shrink", "font": "plate", "fontSize": 112,
+                                   "letterSpacing": 2, "name": "plate", "style": {"height": 150, "width": "90%"},
+                                   "text": "{plate}"}],
+                     "name": "root",
+                     "style": {"alignItems": "center", "justifyContent": "center", "paddingBottom": 8,
+                               "paddingLeft": 24, "paddingRight": 24, "paddingTop": 30}},
+            "size": [512, 256]}},
+        "name": level,
+        "preview": {"file": f"{PLATES_DIR}/driver_training/licenseplate-52-11.dae", "mesh": "licenseplate-52-11",
+                    "set": "52-11", "texture": "licenseplate-52-11"},
+        "type": "licenseplate",
+        "vars": {"plate": {"charsets": {"D": "123456789", "c": "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "d": "0123456789"},
+                           "default": "{D}{d}{d} {c}{c}{c}", "maxLength": 8, "minLength": 0, "type": "string"}},
+        "version": 3,
+    }

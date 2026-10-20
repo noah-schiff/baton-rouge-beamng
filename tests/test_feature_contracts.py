@@ -11,7 +11,7 @@ from brmap.buildings import Building
 from brmap.geo import Extent
 
 
-@pytest.mark.parametrize("name", ["buildings", "trees", "markings"])
+@pytest.mark.parametrize("name", ["buildings", "styled", "trees", "markings", "landmarks", "bayous", "dressing"])
 def test_feature_module_has_level_content(name):
     mod = importlib.import_module(f"brmap.{name}")
     assert list(inspect.signature(mod.level_content).parameters) == ["cfg", "data_dir", "root", "heights",

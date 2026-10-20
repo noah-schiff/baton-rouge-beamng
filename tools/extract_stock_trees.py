@@ -97,12 +97,12 @@ class LevelZip:
 
 
 def game_version(game_dir: Path) -> str:
-    """'0.39.4' from integrity.json's '0.39.4.0'."""
+    """integrity.json's version, all of it ('0.40.0.0')."""
     try:
         version = json.loads((game_dir / "integrity.json").read_text(encoding="utf-8"))["version"]
     except (OSError, KeyError, ValueError):
         return "unknown"
-    return ".".join(str(version).split(".")[:3])
+    return str(version)
 
 
 def forest_items(lz: LevelZip) -> dict[str, dict]:

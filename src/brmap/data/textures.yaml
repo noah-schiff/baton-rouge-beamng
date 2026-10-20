@@ -1,0 +1,76 @@
+# The CC0 textures the textures stage downloads (brmap.textures.fetch), 1K JPG, from ambientCG
+# (https://ambientcg.com/) and Poly Haven (https://polyhaven.com/). Both publish them under CC0 1.0
+# (https://creativecommons.org/publicdomain/zero/1.0/), so the level may use and ship them.
+# docs/textures.md lists every texture with its page.
+#
+#   tex_id:                       # a material says tex:<tex_id> (src/brmap/data/*_materials.yaml)
+#     source: ambientcg | polyhaven
+#     asset: <the asset's id on the site>
+#     maps: {b|nm|r|o: <the map's name on the site>}
+#                                 # b colour, nm normal (always the OpenGL variant: green = +V up, as the
+#                                 # in-game spike S1 found), r roughness, o opacity
+#     license: CC0-1.0
+#     sha256: {map: hex}          # of the downloaded file, checked on every run (a mismatch raises)
+#
+# ambientCG names a map in the zip <asset>_1K-JPG_<name>.jpg; Poly Haven serves <asset>_<name>_1k.jpg.
+
+roof_barrel:
+  source: ambientcg
+  asset: RoofingTiles012A
+  maps: {b: Color, nm: NormalGL, r: Roughness}
+  license: CC0-1.0
+  sha256:
+    b: a1b613af4009bcb05b0b20ee30914d1f912495f53d78c2fdb652582ba10de582
+    nm: c9e96a1e33fb5204cf461591d895504fe51ce27f09bec89504e43c781c5385de
+    r: 3f0461ab42515d522eb74a1180ea5a74966aaa29d4df88b31ed17cd1b4f77465
+
+limestone:
+  source: ambientcg
+  asset: Tiles143
+  maps: {b: Color, nm: NormalGL, r: Roughness}
+  license: CC0-1.0
+  sha256:
+    b: 1ac88787cb3965de38231c59072cb6eddc2677f731b97788768e4da63d195185
+    nm: 8ac51be0a6631cb104add1d516048b6fdd113c9af049c35f12147ba52a67d806
+    r: ec1960dcc4eec4e6f9d7789124ae2bfd7a23170b72ecab72d2bdf8a6fdbcfe0b
+
+turf:
+  source: ambientcg
+  asset: Grass005
+  maps: {b: Color, nm: NormalGL, r: Roughness}
+  license: CC0-1.0
+  sha256:
+    b: 5fd8edc1a04e2b9b093229dd0ec41f29668dda9fc698f6610b12cdd83b7690cb
+    nm: f89e3a1701511d379a9772774ec6b9d7b7ccf3e944fdcc2b98c09dee4cfd804f
+    r: 04ca3a66eee6105cac9754ac773ffd4ee63ca2222984554c4c04b0cdca80da26
+
+bark_cypress:
+  source: polyhaven
+  asset: metasequoia_bark
+  maps: {b: diff, nm: nor_gl, r: rough}
+  license: CC0-1.0
+  sha256:
+    b: 38821f7d363a5df6ed29a36c6fa331be22290f01ebfd9ce1619edaf165739a77
+    nm: 4f5d765c31965b37ec2aa3b803a3e0e29c6c8edb8df2e7040a2907df65cb062f
+    r: 31a295eaae0577f3e958951d3ddffd6ed7b157172579d977d8309aba7b105fd4
+
+bark_tupelo:
+  source: ambientcg
+  asset: Bark004
+  maps: {b: Color, nm: NormalGL, r: Roughness}
+  license: CC0-1.0
+  sha256:
+    b: 63efa0c70f9a93edc15a3c568026066a55dc2c26de096b7b5aa327d5e9c6eee1
+    nm: 197e9ba1317517433d59f327cb7c8fac04b91b27b2f54ba16a58c4b2e329a180
+    r: e508b7dbf618087badc628ef6271290e5ecbe8163a2f6bc83957a1c9687b357a
+
+needles:
+  source: ambientcg
+  asset: LeafSet019
+  maps: {b: Color, nm: NormalGL, r: Roughness, o: Opacity}
+  license: CC0-1.0
+  sha256:
+    b: 106f26456e5dd12061216b84963ee792132297c3fdc499c87bd770cd9861bc92
+    nm: cedcd6fe1367d009375aae4a9908e2c8a366999ef9f9a3d620559f0fc5b6837b
+    o: 81eb93064509f8f0be67c4988488c172cee69784eb8da9d962f4653ceb959895
+    r: 83c58bc1e233badbf53191a488b0a96e21394ee8620e7e2f42c445ccbdbfe75e

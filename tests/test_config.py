@@ -122,3 +122,62 @@ def test_feature_flags_accept_quoted_strings(tmp_path):
     p.write_text("markings:\n  enabled: 'false'\ntraffic:\n  enabled: 'yes'\n", encoding="utf-8")
     cfg = load_config(p)
     assert cfg.markings_enabled is False and cfg.traffic_enabled is True
+
+
+def write_yaml(tmp_path, data):
+    import yaml
+    p = tmp_path / "config.yaml"
+    p.write_text(yaml.safe_dump(data), encoding="utf-8")
+    return p
+
+
+def test_v02_defaults(tmp_path):
+    cfg = load_config(write_yaml(tmp_path, {}))
+    assert cfg.blender_exe == "C:/Desktop/blender.exe"
+    assert cfg.texture_max_size == 1024 and cfg.moss_share == 0.30
+    assert cfg.bayou_kinds == ("river", "stream", "canal", "ditch", "drain")
+    assert cfg.bayou_min_length_m == 0.0 and cfg.bayou_node_spacing_m == 10.0
+    assert cfg.landmarks_enabled and cfg.swamp_trees and cfg.bayous_enabled and cfg.deck_dressing
+
+
+def test_v02_validation(tmp_path):
+    for bad in ({"textures": {"max_size": 1000}}, {"trees": {"moss_share": 1.5}},
+                {"bayous": {"node_spacing_m": 0}}):
+        with pytest.raises(ValueError):
+            load_config(write_yaml(tmp_path, bad))
+
+
+def test_v02_yaml_overrides(tmp_path):
+    cfg = load_config(write_yaml(tmp_path, {
+        "blender": {"exe": "D:/b/blender.exe"}, "textures": {"max_size": 2048},
+        "landmarks": {"enabled": "no"}, "trees": {"swamp": False, "moss_share": 0.5},
+        "bayous": {"enabled": "false", "kinds": ["stream", "canal"], "min_length_m": 25,
+                   "node_spacing_m": 5},
+        "bridges": {"dressing": "off"}}))
+    assert cfg.blender_exe == "D:/b/blender.exe" and cfg.texture_max_size == 2048
+    assert cfg.landmarks_enabled is False and cfg.swamp_trees is False and cfg.moss_share == 0.5
+    assert cfg.bayous_enabled is False and cfg.bayou_kinds == ("stream", "canal")
+    assert isinstance(cfg.bayou_kinds, tuple)
+    assert (cfg.bayou_min_length_m, cfg.bayou_node_spacing_m) == (25.0, 5.0)
+    assert cfg.deck_dressing is False
+
+
+def test_repo_config_has_the_v02_keys():
+    repo = load_config(REPO_CONFIG)
+    assert repo.blender_exe == "C:/Desktop/blender.exe" and repo.texture_max_size == 1024
+    assert repo.landmarks_enabled and repo.swamp_trees and repo.bayous_enabled and repo.deck_dressing
+    assert repo.moss_share == 0.30 and repo.bayou_node_spacing_m == 10.0
+
+
+def test_lsu_config_holds_the_landmarks():
+    cfg = load_config(REPO_CONFIG.with_name("config.lsu.yaml"))
+    ext = Extent.from_config(cfg)
+    assert cfg.level_name == "baton_rouge_lsu" and cfg.out_dir == "data/out_lsu"
+    assert cfg.raw_dir == "data/raw" and cfg.dist_dir == "dist/lsu"
+    assert (cfg.center_lat, cfg.center_lon) == (30.41228, -91.18323)
+    assert cfg.debug_half_size_m == 1500 and cfg.terrain_size == 1024 and cfg.trees_max == 20000
+    assert [(s.name, s.title, s.lat, s.lon) for s in cfg.spawns] == [
+        ("spawn_lsu", "LSU, Tiger Stadium lot", 30.4115, -91.1855)]
+    for lat, lon in ((30.414482, -91.178903), (30.411943, -91.183753), (30.406437, -91.187575),
+                     (30.414255, -91.184495), (30.413423, -91.185066)):
+        assert ext.contains(*ext.to_level(lon, lat))

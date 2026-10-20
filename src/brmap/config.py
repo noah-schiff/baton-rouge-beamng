@@ -19,6 +19,7 @@ DEFAULT_SOURCES = {
 }
 
 TERRAIN_SIZES = (256, 512, 1024, 2048, 4096, 8192)
+TEXTURE_SIZES = (256, 512, 1024, 2048, 4096)
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,16 @@ class Config:
     trees_max: int = 250000           # cap on tree instances
     markings_enabled: bool = True     # lane markings on the major roads
     traffic_enabled: bool = True      # info.json supportsTraffic (AI traffic in Freeroam)
+    blender_exe: str = "C:/Desktop/blender.exe"  # headless Blender that runs the landmark and tree scripts
+    texture_max_size: int = 1024      # longest side of a converted texture, px (power of two, 256-4096)
+    landmarks_enabled: bool = True    # modelled landmarks replace the generic buildings on their footprints
+    swamp_trees: bool = True          # cypress and tupelo in wetlands and along bayous
+    moss_share: float = 0.30          # share of developed-area live oaks that carry Spanish moss (0-1)
+    bayous_enabled: bool = True       # bayous, creeks and canals drawn as still water
+    bayou_kinds: tuple[str, ...] = ("river", "stream", "canal", "ditch", "drain")  # OSM waterway=*
+    bayou_min_length_m: float = 0.0   # drop waterways shorter than this, m
+    bayou_node_spacing_m: float = 10.0  # distance between nodes on a bayou centreline, m
+    deck_dressing: bool = True        # barriers and piers on the bridge decks
 
     def validate(self) -> None:
         if self.half_size_m <= 0:
@@ -81,6 +92,15 @@ class Config:
             raise ValueError(f"buildings tile_m must be positive, got {self.building_tile_m}")
         if self.trees_max < 0:
             raise ValueError(f"trees max_count must not be negative, got {self.trees_max}")
+        if self.texture_max_size not in TEXTURE_SIZES:
+            raise ValueError(f"textures max_size must be one of {TEXTURE_SIZES}, "
+                             f"got {self.texture_max_size}")
+        if not 0.0 <= self.moss_share <= 1.0:
+            raise ValueError(f"trees moss_share must be between 0 and 1, got {self.moss_share}")
+        if self.bayou_min_length_m < 0:
+            raise ValueError(f"bayous min_length_m must not be negative, got {self.bayou_min_length_m}")
+        if self.bayou_node_spacing_m <= 0:
+            raise ValueError(f"bayous node_spacing_m must be positive, got {self.bayou_node_spacing_m}")
 
 
 def _flag(value) -> bool:
@@ -97,6 +117,8 @@ def load_config(path: str | Path = "config.yaml") -> Config:
     ter = raw.get("terrain") or {}
     br = raw.get("bridges") or {}
     bld = raw.get("buildings") or {}
+    trees = raw.get("trees") or {}
+    bay = raw.get("bayous") or {}
     d = Config()
     debug = ext.get("debug_half_size_m", d.debug_half_size_m)
     overrides = br.get("overrides")
@@ -125,9 +147,19 @@ def load_config(path: str | Path = "config.yaml") -> Config:
         dist_dir=str((raw.get("paths") or {}).get("dist", d.dist_dir)),
         buildings_microsoft=_flag(bld.get("microsoft", d.buildings_microsoft)),
         building_tile_m=float(bld.get("tile_m", d.building_tile_m)),
-        trees_max=int((raw.get("trees") or {}).get("max_count", d.trees_max)),
+        trees_max=int(trees.get("max_count", d.trees_max)),
         markings_enabled=_flag((raw.get("markings") or {}).get("enabled", d.markings_enabled)),
         traffic_enabled=_flag((raw.get("traffic") or {}).get("enabled", d.traffic_enabled)),
+        blender_exe=str((raw.get("blender") or {}).get("exe", d.blender_exe)),
+        texture_max_size=int((raw.get("textures") or {}).get("max_size", d.texture_max_size)),
+        landmarks_enabled=_flag((raw.get("landmarks") or {}).get("enabled", d.landmarks_enabled)),
+        swamp_trees=_flag(trees.get("swamp", d.swamp_trees)),
+        moss_share=float(trees.get("moss_share", d.moss_share)),
+        bayous_enabled=_flag(bay.get("enabled", d.bayous_enabled)),
+        bayou_kinds=tuple(str(k) for k in bay.get("kinds", d.bayou_kinds)),
+        bayou_min_length_m=float(bay.get("min_length_m", d.bayou_min_length_m)),
+        bayou_node_spacing_m=float(bay.get("node_spacing_m", d.bayou_node_spacing_m)),
+        deck_dressing=_flag(br.get("dressing", d.deck_dressing)),
     )
     cfg.validate()
     return cfg

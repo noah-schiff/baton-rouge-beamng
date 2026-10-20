@@ -1,0 +1,105 @@
+# Materials the custom tree models bind (the Blender material names), resolved by
+# brmap.materials.resolve into the level's art/shapes/trees/br_trees.materials.json beside the
+# stock tree materials. The same entry form as landmark_materials.yaml:
+#
+#   br_<name>:
+#     maps: {b|nm|r|o|ao: "stock:<path>" | "tex:<tex_id>"}
+#     factors: {...}   # go into the stage as they are (baseColorFactor, ...)
+#     flags: {...}     # go to the top level (alphaTest, alphaRef, doubleSided, groundType, ...)
+#
+# Forest leaves leave vertColor and instanceDiffuse off: their vertex colours hold the wind
+# weights (r branch attenuation, g branch phase, b leaf-edge flutter), never a tint.
+
+# The stock fir_bark's maps (east_coast_usa art/shapes/trees/trees_douglasfir/main.materials.json;
+# the textures are in content/assets/materials/tree.zip, 0.39.4).
+br_tree_cypress_bark:
+  maps:
+    b: stock:/assets/materials/tree/fir/t_fir_bark/t_fir_bark_b.color.png
+    nm: stock:/assets/materials/tree/fir/t_fir_bark/t_fir_bark_nm.normal.png
+    r: stock:/assets/materials/tree/fir/t_fir_bark/t_fir_bark_r.data.png
+    ao: stock:/assets/materials/tree/fir/t_fir_bark/t_fir_bark_ao.data.png
+  flags:
+    annotation: NATURE
+    groundType: WOOD
+
+# The stock t_cypress_leaves sprays (the WCUSA and italy "cypress" material's maps, tree.zip,
+# 0.39.4), tinted to the bald cypress's yellow-green, with the stock leaf flags.
+br_tree_cypress_leaves:
+  maps:
+    b: stock:/assets/materials/tree/cypress/t_cypress_leaves/t_cypress_leaves_b.color.png
+    nm: stock:/assets/materials/tree/cypress/t_cypress_leaves/t_cypress_leaves_nm.normal.png
+    r: stock:/assets/materials/tree/cypress/t_cypress_leaves/t_cypress_leaves_r.data.png
+    o: stock:/assets/materials/tree/cypress/t_cypress_leaves/t_cypress_leaves_o.data.png
+    ao: stock:/assets/materials/tree/cypress/t_cypress_leaves/t_cypress_leaves_ao.data.png
+  factors:
+    baseColorFactor: [0.78, 0.92, 0.62, 1]
+  flags:
+    alphaTest: true
+    alphaRef: 90
+    annotation: NATURE
+    doubleSided: true
+    invertBackFaceNormals: true
+    subSurface: true
+    subSurfaceIntensity: 1
+    groundType: LEAVES_THIN
+
+# The water tupelo's bark: the stock poplar bark (tree.zip's t_poplar_bark, 512 x 2048, as the
+# automation_test_track's m_poplar_bark binds it): grey-brown with long narrow ridges, as water tupelo
+# bark is. The CC0 bark_tupelo (ambientCG Bark004) is a pine's scaly pink plates, so it stays unbound.
+# The trunk's uv runs 1 m round and 4 m up per repeat, as on the cypress's fir bark.
+br_tree_tupelo_bark:
+  maps:
+    b: stock:/assets/materials/tree/poplar/t_poplar_bark/t_poplar_bark_b.color.png
+    nm: stock:/assets/materials/tree/poplar/t_poplar_bark/t_poplar_bark_nm.normal.png
+    r: stock:/assets/materials/tree/poplar/t_poplar_bark/t_poplar_bark_r.data.png
+    ao: stock:/assets/materials/tree/poplar/t_poplar_bark/t_poplar_bark_ao.data.png
+  factors:
+    baseColorFactor: [0.93, 0.88, 0.80, 1]
+  flags:
+    annotation: NATURE
+    groundType: WOOD
+
+# The stock beech sprays (tree.zip's t_beech_leaves, the stock beech_leaves material's maps and flags),
+# tinted to the water tupelo's deep green; its ovate leaves stand in for the tupelo's.
+br_tree_tupelo_leaves:
+  maps:
+    b: stock:/assets/materials/tree/beech/t_beech_leaves/t_beech_leaves_b.color.png
+    nm: stock:/assets/materials/tree/beech/t_beech_leaves/t_beech_leaves_nm.normal.png
+    r: stock:/assets/materials/tree/beech/t_beech_leaves/t_beech_leaves_r.data.png
+    o: stock:/assets/materials/tree/beech/t_beech_leaves/t_beech_leaves_o.data.png
+    ao: stock:/assets/materials/tree/beech/t_beech_leaves/t_beech_leaves_ao.data.png
+  factors:
+    baseColorFactor: [0.72, 0.86, 0.66, 1]
+  flags:
+    alphaTest: true
+    alphaRef: 105
+    annotation: NATURE
+    doubleSided: true
+    invertBackFaceNormals: true
+    subSurface: true
+    subSurfaceIntensity: 1
+    groundType: LEAVES_THIN
+
+# Spanish moss (Tillandsia usneoides): the strands of br_cypress_b and of the br_moss_* overlays on the
+# live oaks, cut from the generated moss card (texgen.moss_card; tex:moss). Thin enough to let a little
+# light through (subSurface 0.05: at 0.1 the strands glowed near white in game); alphaRef 67 keeps the
+# 1 px filaments, and textures.ALPHA_REF["moss"] says the same so the card's mipmaps keep the share of
+# texels at or above it (otherwise the strands average into a solid rectangle at a distance). The card
+# keeps its grey-green colours; under the 0.40 sky they read near white-blue in game, so the base colour
+# factor darkens them, the blue most (the in-game A/B on 0.40: 0.75 too pale, 0.4 dark blocks).
+br_tree_moss:
+  maps:
+    b: tex:moss
+    nm: tex:moss
+    o: tex:moss
+  factors:
+    baseColorFactor: [0.65, 0.65, 0.5, 1.0]
+  flags:
+    alphaTest: true
+    alphaRef: 67
+    annotation: NATURE
+    doubleSided: true
+    invertBackFaceNormals: true
+    subSurface: true
+    subSurfaceIntensity: 0.05
+    groundType: LEAVES_THIN
